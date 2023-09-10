@@ -10,6 +10,7 @@ add_library(APCpp SHARED
     Archipelago.cpp
     Archipelago_Gifting.cpp
     Archipelago.h)
+add_library(APCpp-static STATIC Archipelago.cpp Archipelago_Gifting.cpp Archipelago.h)
 
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
