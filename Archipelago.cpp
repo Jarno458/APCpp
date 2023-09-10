@@ -776,6 +776,14 @@ void WriteSPSave() {
     sp_save_file.flush();
 }
 
+std::string AP_GetItemName(int64_t id) {
+    return getItemName(id);
+}
+
+std::string AP_GetLocationName(int64_t id){
+    return getLocationName(id);
+}
+
 std::string getItemName(int64_t id) {
     return map_item_id_name.count(id) ? map_item_id_name.at(id) : std::string("Unknown Item") + std::to_string(id);
 }

@@ -202,3 +202,6 @@ void AP_RegisterSetReplyCallback(void (*f_setreply)(AP_SetReply));
 void AP_SetNotify(std::map<std::string,AP_DataType>);
 // Single Key version of above for convenience
 void AP_SetNotify(std::string, AP_DataType);
+
+std::string AP_GetItemName(int64_t id);
+std::string AP_GetLocationName(int64_t id);
