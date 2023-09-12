@@ -784,6 +784,14 @@ std::string AP_GetLocationName(int64_t id){
     return getLocationName(id);
 }
 
+std::string AP_GetPlayerName(int id) {
+    return map_player_id_alias.count(id) ? map_player_id_alias.at(id) : std::string("Unknown Player") + std::to_string(id);
+}
+
+int AP_GetCurrentPlayerSlot() {
+    return ap_player_id;
+}
+
 std::string getItemName(int64_t id) {
     return map_item_id_name.count(id) ? map_item_id_name.at(id) : std::string("Unknown Item") + std::to_string(id);
 }
