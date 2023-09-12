@@ -213,6 +213,7 @@ void AP_SetNotify(std::map<std::string,AP_DataType>);
 // Single Key version of above for convenience
 void AP_SetNotify(std::string, AP_DataType);
 
+int AP_GetCurrentPlayerSlot();
 /* Gifting API Types */
 
 struct AP_GiftBoxProperties {
