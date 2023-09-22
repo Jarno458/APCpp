@@ -39,7 +39,7 @@ std::string ap_ip;
 std::string ap_game;
 std::string ap_passwd;
 std::uint64_t ap_uuid = 0;
-std::mt19937 rando;
+std::mt19937_64 rando;
 AP_NetworkVersion client_version = {0,2,6}; // Default for compatibility reasons
 
 //Deathlink Stuff
@@ -55,6 +55,7 @@ bool queueitemrecvmsg = true;
 
 // Data Maps
 std::map<int, std::string> map_player_id_alias;
+std::map<std::string, int> map_player_alias_id;
 std::map<int64_t, std::string> map_location_id_name;
 std::map<int64_t, std::string> map_item_id_name;
 
@@ -72,6 +73,9 @@ void (*setreplyfunc)(AP_SetReply) = nullptr;
 // Serverdata Management
 std::map<std::string,AP_DataType> map_serverdata_typemanage;
 int last_item_idx = 0;
+
+// Gifting interop
+void handleGiftAPISetReply(AP_SetReply reply);
 
 // Singleplayer Seed Info
 std::ofstream sp_save_file;
@@ -109,7 +113,7 @@ void AP_Init(const char* ip, const char* game, const char* player_name, const ch
     multiworld = true;
     
     uint64_t milliseconds_since_epoch = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-    rando = std::mt19937(milliseconds_since_epoch);
+    rando = std::mt19937_64(milliseconds_since_epoch);
 
     if (!strcmp(ip,"")) {
         ip = "archipelago.gg:38281";
@@ -159,6 +163,7 @@ void AP_Init(const char* ip, const char* game, const char* player_name, const ch
     webSocket.setPingInterval(45);
 
     map_player_id_alias[0] = "Archipelago";
+    map_player_alias_id["Archipelago"] = 0;
     AP_Init_Generic();
 }
 
@@ -567,7 +572,8 @@ bool parse_response(std::string msg, std::string &request) {
                 (*checklocfunc)(loc_id);
             }
             for (unsigned int j = 0; j < root[i]["players"].size(); j++) {
-                map_player_id_alias.insert(std::pair<int,std::string>(root[i]["players"][j]["slot"].asInt(),root[i]["players"][j]["alias"].asString()));
+                map_player_id_alias[root[i]["players"][j]["slot"].asInt()] = root[i]["players"][j]["alias"].asString();
+                map_player_alias_id[root[i]["players"][j]["alias"].asString()] = root[i]["players"][j]["slot"].asInt();
                 teams_set.insert(root[i]["players"][j]["team"].asInt());
             }
             if ((root[i]["slot_data"].get("death_link", false).asBool() || root[i]["slot_data"].get("DeathLink", false).asBool()) && deathlinksupported) enable_deathlink = true;
@@ -620,6 +626,7 @@ bool parse_response(std::string msg, std::string &request) {
             auth = true;
             ssl_success = auth && isSSL;
             refused = false;
+            AP_SetNotify("GiftBox;" + std::to_string(ap_player_team) + ";" + std::to_string(ap_player_id), AP_DataType::Raw);
             return true;
         } else if (!strcmp(cmd,"Retrieved")) {
             for (auto itr : root[i]["keys"].getMemberNames()) {
@@ -640,6 +647,17 @@ bool parse_response(std::string msg, std::string &request) {
                 map_server_data.erase(itr);
             }
         } else if (!strcmp(cmd,"SetReply")) {
+            if (root[i]["key"].asString().rfind("GiftBox", 0) == 0) {
+                // Reserved by library. Used for Gifting API
+                std::string raw_val;
+                std::string raw_orig_val;
+                AP_SetReply setreply;
+                raw_val =  writer.write(root[i]["value"]);
+                raw_orig_val = writer.write(root[i]["original_value"]);
+                setreply.value = &raw_val;
+                setreply.original_value = &raw_orig_val;
+                handleGiftAPISetReply(setreply);
+            }
             if (setreplyfunc) {
                 int int_val;
                 int int_orig_val;
@@ -764,6 +782,7 @@ bool parse_response(std::string msg, std::string &request) {
             //Update Player aliases if present
             for (auto itr : root[i].get("players", Json::arrayValue)) {
                 map_player_id_alias[itr["slot"].asInt()] = itr["alias"].asString();
+                map_player_alias_id[itr["alias"].asString()] = itr["slot"].asInt();
             }
         } else if (!strcmp(cmd, "ConnectionRefused")) {
             auth = false;
