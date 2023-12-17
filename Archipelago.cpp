@@ -63,7 +63,7 @@ std::set<int> teams_set;
 
 // Callback function pointers
 void (*resetItemValues)();
-void (*getitemfunc)(int64_t,bool);
+void (*getitemfunc)(int64_t,bool,bool);
 void (*checklocfunc)(int64_t);
 void (*locinfofunc)(std::vector<AP_NetworkItem>) = nullptr;
 void (*recvdeath)() = nullptr;
@@ -340,7 +340,7 @@ void AP_SetItemClearCallback(void (*f_itemclr)()) {
     resetItemValues = f_itemclr;
 }
 
-void AP_SetItemRecvCallback(void (*f_itemrecv)(int64_t,bool)) {
+void AP_SetItemRecvCallback(void (*f_itemrecv)(int64_t,bool,bool)) {
     getitemfunc = f_itemrecv;
 }
 
@@ -803,7 +803,7 @@ bool parse_response(std::string msg, std::string &request) {
             for (unsigned int j = 0; j < root[i]["items"].size(); j++) {
                 int64_t item_id = root[i]["items"][j]["item"].asInt64();
                 notify = (item_idx == 0 && last_item_idx <= j && multiworld) || item_idx != 0;
-                (*getitemfunc)(item_id, notify);
+                (*getitemfunc)(item_id, notify, root[i]["items"][j]["player"].asInt() < 0);
                 if (queueitemrecvmsg && notify) {
                     AP_ItemRecvMessage* msg = new AP_ItemRecvMessage;
                     AP_NetworkPlayer sender = getPlayer(0, root[i]["items"][j]["player"].asInt());
