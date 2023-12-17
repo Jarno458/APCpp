@@ -14,10 +14,6 @@ int AP_GetCurrentPlayerTeam() {
     return ap_player_team;
 }
 
-int AP_GetCurrentPlayerSlot() {
-    return ap_player_id;
-}
-
 std::string AP_GetItemName(int64_t id) {
     return getItemName(id);
 }

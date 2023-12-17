@@ -27,6 +27,14 @@ struct AP_NetworkItem {
     std::string playerName;
 };
 
+struct AP_NetworkPlayer {
+    int team;
+    int slot;
+    std::string name;
+    std::string alias;
+    std::string game;
+};
+
 // Set current client version
 void AP_SetClientVersion(AP_NetworkVersion*);
 
@@ -131,12 +139,10 @@ struct AP_RoomInfo {
     std::map<std::string, int> permissions;
     int hint_cost;
     int location_check_points;
-    //MISSING: players
     //MISSING: games
-    int datapackage_version;
-    std::map<std::string, int> datapackage_versions;
+    std::map<std::string, std::string> datapackage_checksums;
     std::string seed_name;
-    float time;
+    double time;
 };
 
 /* Connection Information Functions */
@@ -144,6 +150,7 @@ struct AP_RoomInfo {
 int AP_GetRoomInfo(AP_RoomInfo*);
 AP_ConnectionStatus AP_GetConnectionStatus();
 int AP_GetUUID();
+int AP_GetPlayerID();
 
 /* Serverside Data Types */
 
