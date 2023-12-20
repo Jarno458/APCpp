@@ -108,9 +108,6 @@ Json::Value sp_ap_root;
 // PRIV Func Declarations Start
 void AP_Init_Generic();
 bool parse_response(std::string msg, std::string &request);
-bool parse_DataPackage(Json::Value &root, unsigned int i, std::string &request);
-void parse_ReceivedItems(Json::Value &root, unsigned int i);
-bool parse_DataPackage(Json::Value &root, unsigned int i, std::string &request);
 void APSend(std::string req);
 void WriteFileJSON(Json::Value val, std::string path);
 std::string getItemName(std::string game, int64_t id);
@@ -673,7 +670,17 @@ bool parse_response(std::string msg, std::string &request) {
             request = writer.write(req_t);
             return true;
         } else if (!strcmp(cmd,"DataPackage")) {
-            return parse_DataPackage(root, i, request);
+            parseDataPkg(root[i]["data"]);
+            Json::Value req_t;
+            if (!datapkg_outdated_games.empty()) {
+                req_t[0]["cmd"] = "GetDataPackage";
+                req_t[0]["games"] = Json::arrayValue;
+                req_t[0]["games"].append(*datapkg_outdated_games.begin());
+            } else {
+                req_t[0]["cmd"] = "Sync";
+            }
+            request = writer.write(req_t);
+            return true;
         } else if (!strcmp(cmd,"Retrieved")) {
             for (auto itr : root[i]["keys"].getMemberNames()) {
                 if (!map_server_data.count(itr)) continue;
@@ -791,7 +798,36 @@ bool parse_response(std::string msg, std::string &request) {
             }
             locinfofunc(locations);
         } else if (!strcmp(cmd, "ReceivedItems")) {
-            parse_ReceivedItems(root, i);
+            int item_idx = root[i]["index"].asInt();
+            bool notify;
+            for (unsigned int j = 0; j < root[i]["items"].size(); j++) {
+                int64_t item_id = root[i]["items"][j]["item"].asInt64();
+                notify = (item_idx == 0 && last_item_idx <= j && multiworld) || item_idx != 0;
+                bool isFromServer = root[i]["items"][j]["player"].asInt() < 0
+                (*getitemfunc)(item_id, notify, isFromServer);
+                if (queueitemrecvmsg && notify) {
+                    AP_ItemRecvMessage* msg = new AP_ItemRecvMessage;
+                    AP_NetworkPlayer sender = getPlayer(0, root[i]["items"][j]["player"].asInt());
+                    msg->type = AP_MessageType::ItemRecv;
+                    msg->item = getItemName(ap_game, item_id);
+                    msg->sendPlayer = sender.alias;
+                    msg->text = std::string("Received ") + msg->item + std::string(" from ") + msg->sendPlayer;
+                    messageQueue.push_back(msg);
+                }
+            }
+            last_item_idx = item_idx == 0 ? root[i]["items"].size() : last_item_idx + root[i]["items"].size();
+            AP_SetServerDataRequest request;
+            request.key = "APCppLastRecv" + ap_player_name + std::to_string(ap_player_id);
+            AP_DataStorageOperation replac;
+            replac.operation = "replace";
+            replac.value = &last_item_idx;
+            std::vector<AP_DataStorageOperation> operations;
+            operations.push_back(replac);
+            request.operations = operations;
+            request.default_value = 0;
+            request.type = AP_DataType::Int;
+            request.want_reply = false;
+            AP_SetServerData(&request);
         } else if (!strcmp(cmd, "RoomUpdate")) {
             //Sync checks with server
             for (unsigned int j = 0; j < root[i]["checked_locations"].size(); j++) {
@@ -825,59 +861,6 @@ bool parse_response(std::string msg, std::string &request) {
         }
     }
     return false;
-}
-
-bool parse_DataPackage(Json::Value &root, unsigned int i, std::string &request)
-{
-    parseDataPkg(root[i]["data"]);
-    Json::Value req_t;
-    if (!datapkg_outdated_games.empty())
-    {
-        req_t[0]["cmd"] = "GetDataPackage";
-        req_t[0]["games"] = Json::arrayValue;
-        req_t[0]["games"].append(*datapkg_outdated_games.begin());
-    }
-    else
-    {
-        req_t[0]["cmd"] = "Sync";
-    }
-    request = writer.write(req_t);
-    return true;
-}
-
-void parse_ReceivedItems(Json::Value &root, unsigned int i)
-{
-    int item_idx = root[i]["index"].asInt();
-    bool notify;
-    for (unsigned int j = 0; j < root[i]["items"].size(); j++)
-    {
-        int64_t item_id = root[i]["items"][j]["item"].asInt64();
-        notify = (item_idx == 0 && last_item_idx <= j && multiworld) || item_idx != 0;
-        (*getitemfunc)(item_id, notify, root[i]["items"][j]["player"].asInt() < 0);
-        if (queueitemrecvmsg && notify)
-        {
-            AP_ItemRecvMessage *msg = new AP_ItemRecvMessage;
-            AP_NetworkPlayer sender = getPlayer(0, root[i]["items"][j]["player"].asInt());
-            msg->type = AP_MessageType::ItemRecv;
-            msg->item = getItemName(ap_game, item_id);
-            msg->sendPlayer = sender.alias;
-            msg->text = std::string("Received ") + msg->item + std::string(" from ") + msg->sendPlayer;
-            messageQueue.push_back(msg);
-        }
-    }
-    last_item_idx = item_idx == 0 ? root[i]["items"].size() : last_item_idx + root[i]["items"].size();
-    AP_SetServerDataRequest request;
-    request.key = "APCppLastRecv" + ap_player_name + std::to_string(ap_player_id);
-    AP_DataStorageOperation replac;
-    replac.operation = "replace";
-    replac.value = &last_item_idx;
-    std::vector<AP_DataStorageOperation> operations;
-    operations.push_back(replac);
-    request.operations = operations;
-    request.default_value = 0;
-    request.type = AP_DataType::Int;
-    request.want_reply = false;
-    AP_SetServerData(&request);
 }
 
 void APSend(std::string req) {
