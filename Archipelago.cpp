@@ -803,7 +803,7 @@ bool parse_response(std::string msg, std::string &request) {
             for (unsigned int j = 0; j < root[i]["items"].size(); j++) {
                 int64_t item_id = root[i]["items"][j]["item"].asInt64();
                 notify = (item_idx == 0 && last_item_idx <= j && multiworld) || item_idx != 0;
-                bool isFromServer = root[i]["items"][j]["player"].asInt() < 0
+                bool isFromServer = root[i]["items"][j]["player"].asInt() < 0;
                 (*getitemfunc)(item_id, notify, isFromServer);
                 if (queueitemrecvmsg && notify) {
                     AP_ItemRecvMessage* msg = new AP_ItemRecvMessage;
