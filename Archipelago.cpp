@@ -108,6 +108,7 @@ Json::Value sp_ap_root;
 // PRIV Func Declarations Start
 void AP_Init_Generic();
 bool parse_response(std::string msg, std::string &request);
+void Parse_LocationInfo(Json::Value &root, unsigned int i);
 void APSend(std::string req);
 void WriteFileJSON(Json::Value val, std::string path);
 std::string getItemName(std::string game, int64_t id);
@@ -585,6 +586,7 @@ void AP_Init_Generic() {
     datapkg_cache_file.close();
 }
 
+#pragma optimize("", off)
 bool parse_response(std::string msg, std::string &request) {
     Json::Value root;
     reader.parse(msg, root);
@@ -910,6 +912,7 @@ bool parse_response(std::string msg, std::string &request) {
     }
     return false;
 }
+#pragma optimize("", on)
 
 void APSend(std::string req) {
     if (webSocket.getReadyState() != ix::ReadyState::Open) {

@@ -30,4 +30,3 @@ std::vector<std::pair<int,std::string>> AP_GetAllPlayers() {
 
     return allPlayers;
 }
-
