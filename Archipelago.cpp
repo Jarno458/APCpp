@@ -259,7 +259,6 @@ void AP_Shutdown() {
     ap_game.clear();
     ap_passwd.clear();
     ap_uuid = 0;
-    rando = std::mt19937_64();
     client_version = {0,2,6};
     deathlinkstat = false;
     deathlinksupported = false;
@@ -278,7 +277,7 @@ void AP_Shutdown() {
     recvdeath = nullptr;
     setreplyfunc = nullptr;
     map_serverdata_typemanage.clear();
-    int last_item_idx = 0;
+    last_item_idx = 0;
     sp_save_path.clear();
     sp_save_root.clear();
     map_server_data.clear(); // Does this leak?
@@ -301,14 +300,12 @@ void AP_SetClientVersion(AP_NetworkVersion* version) {
 }
 
 void AP_SendItem(int64_t idx) {
-    AP_SendItem(std::vector<int64_t>{ idx });
+    AP_SendItem(std::set<int64_t>{ idx });
 }
-void AP_SendItem(std::vector<int64_t> const& locations) {
-    printf("AP: ");
+void AP_SendItem(std::set<int64_t> const& locations) {
     for (int64_t idx : locations) {
-        printf("Checked '%s'.", getLocationName(ap_game, idx).c_str());
+        printf("AP: Checked '%s'.", getLocationName(ap_game, idx).c_str());
     }
-    printf("Informing Archipelago...\n", locations.size());
     if (multiworld) {
         Json::Value req_t;
         req_t[0]["cmd"] = "LocationChecks";
@@ -318,14 +315,19 @@ void AP_SendItem(std::vector<int64_t> const& locations) {
         };
         APSend(writer.write(req_t));
     } else {
+        std::vector<int64_t> new_locations(locations.size());
         for (int64_t idx : locations) {
             for (auto itr : sp_save_root["checked_locations"]) {
                 if (itr.asInt64() == idx) {
-                    return;
+                    continue;
                 }
+                new_locations.emplace_back(idx);
             }
+        }
+
+        for (int64_t idx : new_locations) {
             int64_t recv_item_id = sp_ap_root["location_to_item"].get(std::to_string(idx), 0).asInt64();
-            if (recv_item_id == 0) return;
+            if (recv_item_id == 0) continue;;
             Json::Value fake_msg;
             fake_msg[0]["cmd"] = "ReceivedItems";
             fake_msg[0]["index"] = last_item_idx+1;
@@ -344,7 +346,7 @@ void AP_SendItem(std::vector<int64_t> const& locations) {
     }
 }
 
-void AP_SendLocationScouts(std::vector<int64_t> const& locations, int create_as_hint) {
+void AP_SendLocationScouts(std::set<int64_t> const& locations, int create_as_hint) {
     if (multiworld) {
         Json::Value req_t;
         req_t[0]["cmd"] = "LocationScouts";
@@ -866,7 +868,7 @@ bool parse_response(std::string msg, std::string &request) {
             for (unsigned int j = 0; j < root[i]["items"].size(); j++) {
                 int64_t item_id = root[i]["items"][j]["item"].asInt64();
                 notify = (item_idx == 0 && last_item_idx <= j && multiworld) || item_idx != 0;
-                bool isFromServer = root[i]["items"][j]["player"].asInt() < 0;
+                bool isFromServer = root[i]["items"][j]["location"].asInt() < 0;
                 (*getitemfunc)(item_id, notify, isFromServer);
                 if (queueitemrecvmsg && notify) {
                     AP_ItemRecvMessage* msg = new AP_ItemRecvMessage;
