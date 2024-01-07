@@ -820,7 +820,7 @@ bool parse_response(std::string msg, std::string &request) {
                 msg->text = msg->item + std::string(" was sent to ") + msg->recvPlayer;
                 messageQueue.push_back(msg);
             } else if (printType == "Hint") {
-
+                AP_NetworkPlayer send_player = getPlayer(0, root[i]["item"]["player"].asInt());
                 AP_NetworkPlayer recv_player = getPlayer(0, root[i]["receiving"].asInt());
                 AP_HintMessage* msg = new AP_HintMessage;
                 msg->type = AP_MessageType::Hint;
