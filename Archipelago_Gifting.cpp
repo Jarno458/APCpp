@@ -126,6 +126,8 @@ std::map<std::pair<int,std::string>,AP_GiftBoxProperties> AP_QueryGiftBoxes() {
 
 // Get currently available Gifts in own gift box
 std::vector<AP_Gift> AP_CheckGifts() {
+    log("AP_CheckGifts() retuning gifts: "+ std::to_string(cur_gifts_available.size()));
+
     return cur_gifts_available;
 }
 
@@ -140,7 +142,9 @@ AP_RequestStatus AP_SendGift(AP_Gift gift) {
 }
 
 AP_RequestStatus AP_AcceptGift(std::string id, AP_Gift* gift) {
+    log("AP_AcceptGift(\""+ id +"\")");
     int giftindex = findGiftByID(id);
+    log("AP_AcceptGift() giftIndex " + std::to_string(giftindex));
     if (giftindex != -1) {
         AP_SetServerDataRequest req;
         req.key = AP_PLAYER_GIFTBOX_KEY;
@@ -151,14 +155,18 @@ AP_RequestStatus AP_AcceptGift(std::string id, AP_Gift* gift) {
             {"pop", &json_string}
         };
         AP_Gift cache = cur_gifts_available[giftindex];
+        log("AP_AcceptGift() poping off " + json_string);
         AP_SetServerData(&req);
         while (req.status == AP_RequestStatus::Pending && AP_GetConnectionStatus() == AP_ConnectionStatus::Authenticated) {}
+        log("AP_AcceptGift() request status " + std::to_string((int)req.status));
         if (req.status == AP_RequestStatus::Done) {
             while (findGiftByID(id) != -1) {} // When this value is deleted, we can be sure that the gift is no longer there
             *gift = cache;
+            log("AP_AcceptGift() result: Done");
             return req.status;
         }
     }
+    log("AP_AcceptGift() result: Error");
     return AP_RequestStatus::Error;
 }
 
@@ -181,7 +189,10 @@ void AP_UseGiftAutoReject(bool enable) {
 
 // PRIV
 void handleGiftAPISetReply(AP_SetReply reply) {
+    log("handleGiftAPISetReply(\""+ reply.key +"\")");
+
     if (reply.key == AP_PLAYER_GIFTBOX_KEY) {
+        log("handleGiftAPISetReply() clearling cur_gifts_available");
         cur_gifts_available.clear();
         Json::Value local_giftbox;
         reader.parse(*(std::string*)reply.value, local_giftbox);
@@ -207,6 +218,7 @@ void handleGiftAPISetReply(AP_SetReply reply) {
             gift.IsRefund = local_giftbox[gift_id].get("IsRefund", false).asBool();
             cur_gifts_available.push_back(gift);
         }
+        log("handleGiftAPISetReply() added "+ std::to_string(cur_gifts_available.size()) +" gifs to cur_gifts_available");
         // Perform auto-reject if giftbox closed, or traits do not match
         if (autoReject) {
             std::vector<AP_Gift> gifts = AP_CheckGifts();
@@ -300,6 +312,9 @@ AP_RequestStatus sendGiftInternal(AP_Gift gift) {
 }
 
 int findGiftByID(std::string id) {
+    log("findGiftByID(\""+ id +"\")");
+    log("findGiftByID() number of current gifts: "+ std::to_string(cur_gifts_available.size()));
+
     for (size_t i = 0; i < cur_gifts_available.size(); i++) {
         if (cur_gifts_available[i].ID == id) {
             return i;

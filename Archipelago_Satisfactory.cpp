@@ -2,6 +2,7 @@
 #include "Archipelago_Satisfactory.h"
 
 #include <set>
+#include <iostream>
 
 extern int ap_player_team;
 extern std::set<int> teams_set;
