@@ -271,17 +271,19 @@ AP_RequestStatus AP_SetGiftBoxProperties(AP_GiftBoxProperties props);
 std::map<std::pair<int,std::string>,AP_GiftBoxProperties> AP_QueryGiftBoxes();
 
 // Get currently available Gifts in own gift box
-std::vector<AP_Gift> AP_CheckGifts();
+std::map<std::string, AP_Gift> AP_CheckGifts();
 
 // Send a Gift. DO *NOT* SEND REFUNDS HERE! Use AP_RejectGift for refunds
 // IDs and Sender Info are set by the library. The values set will be ignored
 AP_RequestStatus AP_SendGift(AP_Gift gift);
 
-// Accept a gift from the Giftbox, and writes it into a struct in the second parameter. ONLY THIS DATA IS "REAL", DO NOT REUSE DATA FROM AP_CheckGifts()
-AP_RequestStatus AP_AcceptGift(std::string id, AP_Gift* gift);
+// Accept a gift from the Giftbox
+AP_RequestStatus AP_AcceptGift(std::string id);
+AP_RequestStatus AP_AcceptGift(std::set<std::string> ids);
 
 // Reject a gift from the Giftbox, and refund it.
 AP_RequestStatus AP_RejectGift(std::string id);
+AP_RequestStatus AP_RejectGift(std::set<std::string> ids);
 
 // Automatically reject gifts if they are sent while giftbox is closed, or if they do not match a desired trait and AcceptAnyGift was set to false
 // This is mainly a "consistency checker", but could be expensive to use compared to letting the player reject gifts manually, as this will scan all incoming gifts!
