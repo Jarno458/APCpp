@@ -9,7 +9,9 @@ set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 add_library(APCpp SHARED
     Archipelago.cpp
     Archipelago_Gifting.cpp
-    Archipelago.h)
+    Archipelago_Satisfactory.cpp
+    Archipelago.h
+    Archipelago_Satisfactory.h)
 add_library(APCpp-static STATIC 
     Archipelago.cpp 
     Archipelago_Gifting.cpp 

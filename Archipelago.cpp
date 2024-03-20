@@ -62,6 +62,8 @@ std::map<std::pair<std::string,int64_t>, std::string> map_item_id_name;
 // Data Sets
 std::set<int> teams_set;
 
+extern void log(std::string message);
+
 // Callback function pointers
 void (*resetItemValues)();
 void (*getitemfunc)(int64_t,bool,bool);
@@ -574,7 +576,17 @@ void AP_SetNotify(std::map<std::string,AP_DataType> keylist, bool requestCurrent
             req_t[i + 1]["cmd"] = "Set";
             req_t[i + 1]["key"] = keytypepair.first;
             req_t[i + 1]["want_reply"] = true;
-            req_t[i + 1]["operations"] = Json::arrayValue;
+            req_t[i + 1]["operations"][0]["operation"] = "default";
+            req_t[i + 1]["operations"][0]["value"] = Json::nullValue;
+            switch (keytypepair.second) {
+                case AP_DataType::Int:
+                case AP_DataType::Double:
+                    req_t[i + 1]["default"] = 0;
+                    break;
+                case AP_DataType::Raw:
+                    req_t[i + 1]["default"] = Json::objectValue;
+                    break;
+            }
         }
 
         i++;
@@ -793,12 +805,16 @@ bool parse_response(std::string msg, std::string &request) {
                 map_server_data.erase(itr);
             }
         } else if (cmd == "SetReply") {
+            log("parse_response(\""+ cmd +"\")");
+
             if (root[i]["key"].asString().rfind("GiftBox", 0) == 0) {
+                log("parse_response(\""+ root[i]["key"].asString() +"\")");
                 // Reserved by library. Used for Gifting API
                 std::string raw_val;
                 std::string raw_orig_val;
                 AP_SetReply setreply;
                 raw_val =  writer.write(root[i]["value"]);
+                log("parse_response(\""+ raw_val +"\")");
                 raw_orig_val = writer.write(root[i]["original_value"]);
                 setreply.key = root[i]["key"].asString();
                 setreply.value = &raw_val;

@@ -31,3 +31,12 @@ std::vector<std::pair<int,std::string>> AP_GetAllPlayers() {
 
     return allPlayers;
 }
+
+void (*log_external)(std::string) = nullptr;
+void AP_SetLoggingCallback(void (*f_log)(std::string)) {
+    log_external = f_log;
+}
+void log(std::string message) {
+    if (log_external != nullptr)
+        log_external(message);
+}
