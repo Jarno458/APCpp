@@ -558,22 +558,34 @@ void AP_RegisterSetReplyCallback(void (*f_setreply)(AP_SetReply)) {
     setreplyfunc = f_setreply;
 }
 
-void AP_SetNotify(std::map<std::string,AP_DataType> keylist) {
+void AP_SetNotify(std::map<std::string,AP_DataType> keylist, bool requestCurrentValue) {
     Json::Value req_t;
     req_t[0]["cmd"] = "SetNotify";
+
+    if (requestCurrentValue)
+        req_t[1]["cmd"] = "Get";
+
     int i = 0;
     for (std::pair<std::string,AP_DataType> keytypepair : keylist) {
         req_t[0]["keys"][i] = keytypepair.first;
         map_serverdata_typemanage[keytypepair.first] = keytypepair.second;
+
+        if (requestCurrentValue){
+            req_t[i + 1]["cmd"] = "Set";
+            req_t[i + 1]["key"] = keytypepair.first;
+            req_t[i + 1]["want_reply"] = true;
+            req_t[i + 1]["operations"] = Json::arrayValue;
+        }
+
         i++;
     }
     APSend(writer.write(req_t));
 }
 
-void AP_SetNotify(std::string key, AP_DataType type) {
+void AP_SetNotify(std::string key, AP_DataType type, bool requestCurrentValue) {
     std::map<std::string,AP_DataType> keylist;
     keylist[key] = type;
-    AP_SetNotify(keylist);
+    AP_SetNotify(keylist, requestCurrentValue);
 }
 
 void AP_BulkGetServerData(AP_GetServerDataRequest* request) {
@@ -667,8 +679,6 @@ bool parse_response(std::string msg, std::string &request) {
             ap_player_team = root[i]["team"].asInt();
             ap_player_id = root[i]["slot"].asInt();
 
-            AP_SetNotify("GiftBox;" + std::to_string(ap_player_team) + ";" + std::to_string(ap_player_id), AP_DataType::Raw);
-
             for (unsigned int j = 0; j < root[i]["checked_locations"].size(); j++) {
                 //Sync checks with server
                 int64_t loc_id = root[i]["checked_locations"][j].asInt64();
@@ -686,6 +696,15 @@ bool parse_response(std::string msg, std::string &request) {
                 map_players[root[i]["players"][j]["slot"].asInt()] = player;
                 teams_set.insert(root[i]["players"][j]["team"].asInt());
             }
+
+            std::map<std::string,AP_DataType> giftMotherBoxKeys;
+            for (int team : teams_set)
+                giftMotherBoxKeys.emplace("GiftBoxes;" + std::to_string(team), AP_DataType::Raw); 
+            AP_SetNotify(giftMotherBoxKeys, true);
+
+            //order is important, Motherboxes must be retrieved before personal box
+            AP_SetNotify("GiftBox;" + std::to_string(ap_player_team) + ";" + std::to_string(ap_player_id), AP_DataType::Raw, true);
+
             if ((root[i]["slot_data"].get("death_link", false).asBool() || root[i]["slot_data"].get("DeathLink", false).asBool()) && deathlinksupported) enable_deathlink = true;
             if (root[i]["slot_data"]["death_link_amnesty"] != Json::nullValue)
                 deathlink_amnesty = root[i]["slot_data"].get("death_link_amnesty", 0).asInt();
@@ -792,7 +811,7 @@ bool parse_response(std::string msg, std::string &request) {
                 setreply.value = &raw_val;
                 setreply.original_value = &raw_orig_val;
                 handleGiftAPISetReply(setreply);
-            }
+            } 
             if (setreplyfunc) {
                 int int_val;
                 int int_orig_val;

@@ -221,9 +221,9 @@ std::string AP_GetPrivateServerDataPrefix();
 void AP_RegisterSetReplyCallback(void (*f_setreply)(AP_SetReply));
 
 // Receive all SetReplys with Keys in parameter list
-void AP_SetNotify(std::map<std::string,AP_DataType>);
+void AP_SetNotify(std::map<std::string,AP_DataType>, bool = false);
 // Single Key version of above for convenience
-void AP_SetNotify(std::string, AP_DataType);
+void AP_SetNotify(std::string, AP_DataType, bool = false);
 
 /* Gifting API Types */
 
@@ -271,7 +271,7 @@ AP_RequestStatus AP_SetGiftBoxProperties(AP_GiftBoxProperties props);
 std::map<std::pair<int,std::string>,AP_GiftBoxProperties> AP_QueryGiftBoxes();
 
 // Get currently available Gifts in own gift box
-std::map<std::string, AP_Gift> AP_CheckGifts();
+std::vector<AP_Gift> AP_CheckGifts();
 
 // Send a Gift. DO *NOT* SEND REFUNDS HERE! Use AP_RejectGift for refunds
 // IDs and Sender Info are set by the library. The values set will be ignored

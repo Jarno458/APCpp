@@ -1,5 +1,4 @@
 #include "Archipelago.h"
-#include <chrono>
 #include <json/json.h>
 #include <json/value.h>
 #include <json/writer.h>
@@ -15,21 +14,21 @@ extern Json::FastWriter writer;
 extern Json::Reader reader;
 extern std::mt19937_64 rando;
 extern int ap_player_team;
+extern int ap_player_id;
 extern std::set<int> teams_set;
+
+#define AP_PLAYER_GIFTBOX_KEY ("GiftBox;" + std::to_string(ap_player_team) + ";" + std::to_string(ap_player_id))
 
 // Stuff that is only used for Gifting
 std::map<std::pair<int,std::string>,AP_GiftBoxProperties> map_players_to_giftbox;
-std::map<std::string, AP_Gift> cur_gifts_available;
+std::vector<AP_Gift> cur_gifts_available;
 bool autoReject = true;
-std::chrono::seconds last_giftbox_sync = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch());
 
 // PRIV Func Declarations Start
 AP_RequestStatus sendGiftInternal(AP_Gift gift);
 AP_NetworkPlayer getPlayer(int team, int slot);
 AP_NetworkPlayer getPlayer(int team, std::string name);
 // PRIV Func Declarations End
-
-#define AP_PLAYER_GIFTBOX_KEY ("GiftBox;" + std::to_string(ap_player_team) + ";" + std::to_string(AP_GetPlayerID()))
 
 AP_RequestStatus AP_SetGiftBoxProperties(AP_GiftBoxProperties props) {
     // Create Local Box if needed
@@ -76,63 +75,20 @@ AP_RequestStatus AP_SetGiftBoxProperties(AP_GiftBoxProperties props) {
 }
 
 std::map<std::pair<int,std::string>,AP_GiftBoxProperties> AP_QueryGiftBoxes() {
-    map_players_to_giftbox.clear();
-    std::map<int,std::string> team_data;
-    std::map<int,AP_GetServerDataRequest> team_reqs;
-    for (int team : teams_set) {
-        team_data[team] = "";
-        // Send and wait for data
-        team_reqs[team].key = "GiftBoxes;" + std::to_string(team);
-        team_reqs[team].type = AP_DataType::Raw;
-        team_reqs[team].value = &team_data[team];
-        AP_BulkGetServerData(&team_reqs[team]);
-    }
-    AP_CommitServerData();
-    
-    while (true && AP_GetConnectionStatus() == AP_ConnectionStatus::Authenticated) {
-        bool done = true;
-        for (std::pair<int,AP_GetServerDataRequest> req : team_reqs) {
-            if (req.second.status == AP_RequestStatus::Pending) {
-                done = false;
-                break;
-            }
-        }
-        if (done) break;
-    }
-
-    if (AP_GetConnectionStatus() != AP_ConnectionStatus::Authenticated) return map_players_to_giftbox; // Connection Loss occured
-
-    // Write back data if present
-    for (int team : teams_set) {
-        if (team_reqs[team].status == AP_RequestStatus::Error) continue; // Might just be that noone set it up yet.
-        Json::Value json_data;
-        reader.parse(team_data[team], json_data);
-        for(std::string motherbox_slot : json_data.getMemberNames()) {
-            int slot = atoi(motherbox_slot.c_str());
-            Json::Value player_global_props = json_data[motherbox_slot];
-            AP_NetworkPlayer player = getPlayer(team, slot);
-            map_players_to_giftbox[{team,player.name}].IsOpen = player_global_props.get("IsOpen",false).asBool();
-            map_players_to_giftbox[{team,player.name}].AcceptsAnyGift = player_global_props.get("AcceptsAnyGift",false).asBool();
-            std::vector<std::string> DesiredTraits;
-            for (int i = 0; i < player_global_props["DesiredTraits"].size(); i++) {
-                DesiredTraits.push_back(player_global_props["DesiredTraits"][i].asString());
-            }
-            map_players_to_giftbox[{team,player.name}].DesiredTraits = DesiredTraits;
-        }
-    }
     return map_players_to_giftbox;
 }
 
 // Get currently available Gifts in own gift box
-std::map<std::string, AP_Gift> AP_CheckGifts() {
-    log("AP_CheckGifts() retuning gifts: "+ std::to_string(cur_gifts_available.size()));
-
+std::vector<AP_Gift> AP_CheckGifts() {
     return cur_gifts_available;
 }
 
 AP_RequestStatus AP_SendGift(AP_Gift gift) {
     if (gift.IsRefund) return AP_RequestStatus::Error;
-    if (map_players_to_giftbox[{gift.ReceiverTeam, gift.Receiver}].IsOpen == true) {
+
+    std::pair<int,std::string> key = {gift.ReceiverTeam, gift.Receiver};
+
+    if (map_players_to_giftbox.count(key) && map_players_to_giftbox[key].IsOpen == true) {
         gift.SenderTeam = ap_player_team;
         gift.Sender = AP_GetPlayerID();
         return sendGiftInternal(gift);
@@ -140,69 +96,58 @@ AP_RequestStatus AP_SendGift(AP_Gift gift) {
     return AP_RequestStatus::Error;
 }
 
-
-
 AP_RequestStatus AP_AcceptGift(std::string id) {
     return AP_AcceptGift(std::set<std::string>{ id });
 }
 AP_RequestStatus AP_AcceptGift(std::set<std::string> ids) {
-    log("AP_AcceptGift(\""+ std::to_string(ids.size()) +"\")");
-    //if (cur_gifts_available.count(id)) {
-        AP_SetServerDataRequest req;
-        req.key = AP_PLAYER_GIFTBOX_KEY;
-        req.type = AP_DataType::Raw;
-        req.want_reply = true;
-        req.operations = std::vector<AP_DataStorageOperation>();
-        for (std::string id : ids) {
-            std::string json_string = "\"" + id + "\"";
-            req.operations.push_back({"pop", &json_string});
-            log("AP_AcceptGift() poping off " + json_string);
-        }
-        AP_SetServerData(&req);
-        while (req.status == AP_RequestStatus::Pending && AP_GetConnectionStatus() == AP_ConnectionStatus::Authenticated) {}
-        log("AP_AcceptGift() request status " + std::to_string((int)req.status));
-        if (req.status == AP_RequestStatus::Done) {
-            // If request is done, there is no need to wait here, the pop either works on the server or the server will disconnect us
-            //log("AP_AcceptGift() starting wait loop until id is gone from local vector");
-            //while (findGiftByID(id) != -1) {} // When this value is deleted, we can be sure that the gift is no longer there
-            //log("AP_AcceptGift() end wait loop");
-            log("AP_AcceptGift() result: Done");
-            return req.status;
-        }
-    //}
-    log("AP_AcceptGift() result: Error");
-    return AP_RequestStatus::Error;
+   if (ids.size() == 0)
+        return AP_RequestStatus::Done;
+
+    AP_SetServerDataRequest req;
+    req.key = AP_PLAYER_GIFTBOX_KEY;
+    req.type = AP_DataType::Raw;
+    req.want_reply = true;
+    req.operations = std::vector<AP_DataStorageOperation>();
+
+    std::vector<std::string> id_strings;
+    for (std::string id : ids) 
+        id_strings.emplace_back("\"" + id + "\"");
+    for (int i=0;i < id_strings.size(); i++)
+        req.operations.push_back({"pop", &id_strings[i]});
+    
+    AP_SetServerData(&req);
+    while (req.status == AP_RequestStatus::Pending && AP_GetConnectionStatus() == AP_ConnectionStatus::Authenticated) {}
+    return req.status;
 }
 
 AP_RequestStatus AP_RejectGift(std::string id) {
     return AP_RejectGift(std::set<std::string>{ id });
 }
 AP_RequestStatus AP_RejectGift(std::set<std::string> ids) {
-    //if (findGiftByID(id) != -1) {
-        std::vector<AP_Gift> gifts;
-        std::set<std::string> giftIds;
-
-        std::map<std::string, AP_Gift> availableGiftsCopy = cur_gifts_available;
-
-        for (std::string id : ids) {
-            if (availableGiftsCopy.count(id)){
-                gifts.push_back(availableGiftsCopy[id]);
-                giftIds.insert(id);
+    std::vector<AP_Gift> gifts;
+    std::set<std::string> giftIds;
+    std::vector<AP_Gift> availableGiftsCopy = cur_gifts_available;
+    for (std::string id : ids) {
+        for (AP_Gift gift : availableGiftsCopy){
+            if (gift.ID == id){
+                gifts.push_back(gift);
+                giftIds.insert(gift.ID);
             }
         }
+    }
 
-        AP_RequestStatus status = AP_AcceptGift(giftIds);
-        if (status == AP_RequestStatus::Error) {
-            return status;
-        }
+    AP_RequestStatus status = AP_AcceptGift(giftIds);
+    if (status == AP_RequestStatus::Error) {
+        return status;
+    }
 
-        bool hasError = false;
-        for (AP_Gift gift : gifts) {
-            gift.IsRefund = true;
-            if (sendGiftInternal(gift) == AP_RequestStatus::Error)
-                hasError = true;
-        }
-    //}
+    bool hasError = false;
+    for (AP_Gift gift : gifts) {
+        gift.IsRefund = true;
+        if (sendGiftInternal(gift) == AP_RequestStatus::Error)
+            hasError = true;
+    }
+
     return (hasError) ? AP_RequestStatus::Error : AP_RequestStatus::Done;
 }
 
@@ -212,10 +157,7 @@ void AP_UseGiftAutoReject(bool enable) {
 
 // PRIV
 void handleGiftAPISetReply(AP_SetReply reply) {
-    log("handleGiftAPISetReply(\""+ reply.key +"\")");
-
     if (reply.key == AP_PLAYER_GIFTBOX_KEY) {
-        log("handleGiftAPISetReply() clearling cur_gifts_available");
         cur_gifts_available.clear();
         Json::Value local_giftbox;
         reader.parse(*(std::string*)reply.value, local_giftbox);
@@ -239,21 +181,21 @@ void handleGiftAPISetReply(AP_SetReply reply) {
             gift.SenderTeam = SenderPlayer.team;
             gift.ReceiverTeam = ReceiverPlayer.team;
             gift.IsRefund = local_giftbox[gift_id].get("IsRefund", false).asBool();
-            cur_gifts_available.emplace(gift_id, gift);
+            cur_gifts_available.push_back(gift);
         }
-        log("handleGiftAPISetReply() added "+ std::to_string(cur_gifts_available.size()) +" gifs to cur_gifts_available");
         // Perform auto-reject if giftbox closed, or traits do not match
         if (autoReject) {
-            std::map<std::string, AP_Gift> gifts = AP_CheckGifts();
+            std::vector<AP_Gift> availableGiftsCopy = cur_gifts_available;
             AP_GiftBoxProperties local_box_props = map_players_to_giftbox[{ap_player_team,getPlayer(ap_player_team, AP_GetPlayerID()).name}];
-            for (std::pair<std::string, AP_Gift> gift : gifts) {
+            std::set<std::string> giftIdsToReject;
+            for (AP_Gift gift : availableGiftsCopy) {
                 if (!local_box_props.IsOpen) {
-                    AP_RejectGift(gift.first);
+                    giftIdsToReject.insert(gift.ID);
                     continue;
                 }
                 if (!local_box_props.AcceptsAnyGift) {
                     bool found = false;
-                    for (AP_GiftTrait trait_have : gift.second.Traits) {
+                    for (AP_GiftTrait trait_have : gift.Traits) {
                         for (std::string trait_want : local_box_props.DesiredTraits) {
                             if (trait_have.Trait == trait_want) {
                                 found = true;
@@ -262,9 +204,29 @@ void handleGiftAPISetReply(AP_SetReply reply) {
                         }
                         if (found) break;
                     }
-                    if (!found) AP_RejectGift(gift.first);
+                    if (!found) {
+                        giftIdsToReject.insert(gift.ID);
+                    }
                 }
+
+                AP_RejectGift(giftIdsToReject);
             }
+        }
+    } else if (reply.key.rfind("GiftBoxes;", 0) == 0) {
+        int team = stoi(reply.key.substr(10)); //10 = length of "GiftBoxes;"
+        Json::Value json_data;
+        reader.parse(*(std::string*)reply.value, json_data);
+        for(std::string motherbox_slot : json_data.getMemberNames()) {
+            int slot = atoi(motherbox_slot.c_str());
+            Json::Value player_global_props = json_data[motherbox_slot];
+            AP_NetworkPlayer player = getPlayer(team, slot);
+            map_players_to_giftbox[{team,player.name}].IsOpen = player_global_props.get("IsOpen",false).asBool();
+            map_players_to_giftbox[{team,player.name}].AcceptsAnyGift = player_global_props.get("AcceptsAnyGift",false).asBool();
+            std::vector<std::string> DesiredTraits;
+            for (int i = 0; i < player_global_props["DesiredTraits"].size(); i++) {
+                DesiredTraits.push_back(player_global_props["DesiredTraits"][i].asString());
+            }
+            map_players_to_giftbox[{team,player.name}].DesiredTraits = DesiredTraits;
         }
     }
 }
@@ -326,10 +288,5 @@ AP_RequestStatus sendGiftInternal(AP_Gift gift) {
 
     AP_SetServerData(&req);
     while (req.status == AP_RequestStatus::Pending && AP_GetConnectionStatus() == AP_ConnectionStatus::Authenticated) {}
-    std::chrono::seconds time_since_sync = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch() - last_giftbox_sync);
-    if (time_since_sync.count() >= 300) {
-        AP_QueryGiftBoxes();
-    }
-
     return req.status;
 }
