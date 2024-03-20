@@ -128,7 +128,7 @@ AP_RequestStatus AP_RejectGift(std::set<std::string> ids) {
     std::set<std::string> giftIds;
     std::vector<AP_Gift> availableGiftsCopy = cur_gifts_available;
     for (std::string id : ids) {
-        for (AP_Gift gift : availableGiftsCopy){
+        for (AP_Gift& gift : availableGiftsCopy){
             if (gift.ID == id){
                 gifts.push_back(gift);
                 giftIds.insert(gift.ID);
@@ -142,7 +142,7 @@ AP_RequestStatus AP_RejectGift(std::set<std::string> ids) {
     }
 
     bool hasError = false;
-    for (AP_Gift gift : gifts) {
+    for (AP_Gift& gift : gifts) {
         gift.IsRefund = true;
         if (sendGiftInternal(gift) == AP_RequestStatus::Error)
             hasError = true;
@@ -188,7 +188,7 @@ void handleGiftAPISetReply(AP_SetReply reply) {
             std::vector<AP_Gift> availableGiftsCopy = cur_gifts_available;
             AP_GiftBoxProperties local_box_props = map_players_to_giftbox[{ap_player_team,getPlayer(ap_player_team, AP_GetPlayerID()).name}];
             std::set<std::string> giftIdsToReject;
-            for (AP_Gift gift : availableGiftsCopy) {
+            for (AP_Gift& gift : availableGiftsCopy) {
                 if (!local_box_props.IsOpen) {
                     giftIdsToReject.insert(gift.ID);
                     continue;
@@ -216,17 +216,29 @@ void handleGiftAPISetReply(AP_SetReply reply) {
         int team = stoi(reply.key.substr(10)); //10 = length of "GiftBoxes;"
         Json::Value json_data;
         reader.parse(*(std::string*)reply.value, json_data);
+        std::set<std::string> foundPlayersNames;
         for(std::string motherbox_slot : json_data.getMemberNames()) {
             int slot = atoi(motherbox_slot.c_str());
             Json::Value player_global_props = json_data[motherbox_slot];
             AP_NetworkPlayer player = getPlayer(team, slot);
+            foundPlayersNames.insert(player.name);
             map_players_to_giftbox[{team,player.name}].IsOpen = player_global_props.get("IsOpen",false).asBool();
             map_players_to_giftbox[{team,player.name}].AcceptsAnyGift = player_global_props.get("AcceptsAnyGift",false).asBool();
             std::vector<std::string> DesiredTraits;
-            for (int i = 0; i < player_global_props["DesiredTraits"].size(); i++) {
+            for (unsigned int i = 0; i < player_global_props["DesiredTraits"].size(); i++) {
                 DesiredTraits.push_back(player_global_props["DesiredTraits"][i].asString());
             }
             map_players_to_giftbox[{team,player.name}].DesiredTraits = DesiredTraits;
+        }
+        //remove non existing entries
+        std::vector<std::pair<int,std::string>> keysToRemove;
+        for(std::pair<const std::pair<int,std::string>,AP_GiftBoxProperties>& motherboxData : map_players_to_giftbox) {
+            if (motherboxData.first.first == team && foundPlayersNames.find(motherboxData.first.second) == foundPlayersNames.end()){
+                keysToRemove.push_back(motherboxData.first);
+            }
+        }
+        for(std::pair<int,std::string>& keyToRemove : keysToRemove) {
+            map_players_to_giftbox.erase(keyToRemove);
         }
     }
 }

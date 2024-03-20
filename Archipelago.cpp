@@ -793,19 +793,12 @@ bool parse_response(std::string msg, std::string &request) {
                 map_server_data.erase(itr);
             }
         } else if (cmd == "SetReply") {
-            log("parse_response(\""+ cmd +"\")");
-
             if (root[i]["key"].asString().rfind("GiftBox", 0) == 0) {
-                log("parse_response(\""+ root[i]["key"].asString() +"\")");
-
                 // Reserved by library. Used for Gifting API
                 std::string raw_val;
                 std::string raw_orig_val;
                 AP_SetReply setreply;
                 raw_val =  writer.write(root[i]["value"]);
-
-                log("parse_response(\""+ raw_val +"\")");
-
                 raw_orig_val = writer.write(root[i]["original_value"]);
                 setreply.key = root[i]["key"].asString();
                 setreply.value = &raw_val;
@@ -1039,13 +1032,4 @@ AP_NetworkPlayer getPlayer(int team, std::string name) {
         "ERR"
     };
     return ERR_Player;
-}
-
-void (*log_external)(std::string) = nullptr;
-void AP_SetLoggingCallback(void (*f_log)(std::string)) {
-    log_external = f_log;
-}
-void log(std::string message) {
-    if (log_external != nullptr)
-        log_external(message);
 }
