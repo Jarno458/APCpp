@@ -634,6 +634,7 @@ void AP_Init_Generic() {
 
 #pragma optimize("", off)
 bool parse_response(std::string msg, std::string &request) {
+    log("PACKET: \""+ msg +"\"");
     Json::Value root;
     reader.parse(msg, root);
     for (unsigned int i = 0; i < root.size(); i++) {
@@ -805,16 +806,12 @@ bool parse_response(std::string msg, std::string &request) {
                 map_server_data.erase(itr);
             }
         } else if (cmd == "SetReply") {
-            log("parse_response(\""+ cmd +"\")");
-
             if (root[i]["key"].asString().rfind("GiftBox", 0) == 0) {
-                log("parse_response(\""+ root[i]["key"].asString() +"\")");
                 // Reserved by library. Used for Gifting API
                 std::string raw_val;
                 std::string raw_orig_val;
                 AP_SetReply setreply;
                 raw_val =  writer.write(root[i]["value"]);
-                log("parse_response(\""+ raw_val +"\")");
                 raw_orig_val = writer.write(root[i]["original_value"]);
                 setreply.key = root[i]["key"].asString();
                 setreply.value = &raw_val;

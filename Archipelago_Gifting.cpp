@@ -166,7 +166,7 @@ void handleGiftAPISetReply(AP_SetReply reply) {
             gift.ID = gift_id;
             gift.ItemName = local_giftbox[gift_id].get("ItemName", "Unknown").asString();
             gift.Amount = local_giftbox[gift_id].get("Amount", 0).asUInt();
-            gift.ItemValue = local_giftbox[gift_id].get("ItemValue", 0).asUInt();
+            gift.ItemValue = local_giftbox[gift_id].get("ItemValue", 0).asInt64();
             for (Json::Value trait_v : local_giftbox[gift_id]["Traits"]) {
                 AP_GiftTrait trait;
                 trait.Trait = trait_v.get("Trait", "Unknown").asString();
