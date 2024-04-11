@@ -17,6 +17,8 @@ extern int ap_player_team;
 extern int ap_player_id;
 extern std::set<int> teams_set;
 
+extern void log(std::string message);
+
 #define AP_PLAYER_GIFTBOX_KEY ("GiftBox;" + std::to_string(ap_player_team) + ";" + std::to_string(ap_player_id))
 
 // Stuff that is only used for Gifting
@@ -124,21 +126,31 @@ AP_RequestStatus AP_RejectGift(std::string id) {
     return AP_RejectGift(std::set<std::string>{ id });
 }
 AP_RequestStatus AP_RejectGift(std::set<std::string> ids) {
+    log("AP_RejectGift");
+
     std::vector<AP_Gift> gifts;
     std::set<std::string> giftIds;
-    std::vector<AP_Gift> availableGiftsCopy = cur_gifts_available;
+    std::set<std::string> missingGiftIds;
+    std::vector<AP_Gift> availableGiftsCopy = AP_CheckGifts();
+
     for (std::string id : ids) {
+        bool found = false;
+
         for (AP_Gift& gift : availableGiftsCopy){
-            if (gift.ID == id){
+            if (!found && gift.ID == id){
+                found = true;
                 gifts.push_back(gift);
                 giftIds.insert(gift.ID);
             }
         }
+
+        if (!found)
+            missingGiftIds.insert(id);
     }
 
     AP_RequestStatus status = AP_AcceptGift(giftIds);
-    if (status == AP_RequestStatus::Error) {
-        return status;
+    if (missingGiftIds.empty() || status == AP_RequestStatus::Error) {
+        return AP_RequestStatus::Error;
     }
 
     bool hasError = false;
@@ -157,6 +169,8 @@ void AP_UseGiftAutoReject(bool enable) {
 
 // PRIV
 void handleGiftAPISetReply(AP_SetReply reply) {
+    log("handleGiftAPISetReply");
+
     if (reply.key == AP_PLAYER_GIFTBOX_KEY) {
         cur_gifts_available.clear();
         Json::Value local_giftbox;
@@ -185,7 +199,7 @@ void handleGiftAPISetReply(AP_SetReply reply) {
         }
         // Perform auto-reject if giftbox closed, or traits do not match
         if (autoReject) {
-            std::vector<AP_Gift> availableGiftsCopy = cur_gifts_available;
+            std::vector<AP_Gift> availableGiftsCopy = AP_CheckGifts();
             AP_GiftBoxProperties local_box_props = map_players_to_giftbox[{ap_player_team,getPlayer(ap_player_team, AP_GetPlayerID()).name}];
             std::set<std::string> giftIdsToReject;
             for (AP_Gift& gift : availableGiftsCopy) {

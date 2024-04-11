@@ -501,6 +501,8 @@ int AP_GetPlayerID() {
 }
 
 void AP_BulkSetServerData(AP_SetServerDataRequest* request) {
+    log("AP_BulkSetServerData " + request->key);
+
     request->status = AP_RequestStatus::Pending;
 
     Json::Value req_t;
@@ -508,24 +510,31 @@ void AP_BulkSetServerData(AP_SetServerDataRequest* request) {
     req_t["key"] = request->key;
     switch (request->type) {
         case AP_DataType::Int:
+            log("AP_BulkSetServerData int");
             for (int i = 0; i < request->operations.size(); i++) {
                 req_t["operations"][i]["operation"] = request->operations[i].operation;
                 req_t["operations"][i]["value"] = *((int*)request->operations[i].value);
             }
             break;
         case AP_DataType::Double:
+            log("AP_BulkSetServerData double");
             for (int i = 0; i < request->operations.size(); i++) {
                 req_t["operations"][i]["operation"] = request->operations[i].operation;
                 req_t["operations"][i]["value"] = *((double*)request->operations[i].value);
             }
             break;
         default:
+            log("AP_BulkSetServerData raw");
             for (int i = 0; i < request->operations.size(); i++) {
+                log("AP_BulkSetServerData operations[" + std::to_string(i) + "]");
+                log("AP_BulkSetServerData getting opperation");
                 req_t["operations"][i]["operation"] = request->operations[i].operation;
                 Json::Value data;
+                log("AP_BulkSetServerData getting value");
                 reader.parse((*(std::string*)request->operations[i].value), data);
                 req_t["operations"][i]["value"] = data;
             }
+            log("AP_BulkSetServerData default");
             Json::Value default_val_json;
             if (request->default_value != nullptr) {
                 reader.parse(*((std::string*)request->default_value), default_val_json);
@@ -533,23 +542,36 @@ void AP_BulkSetServerData(AP_SetServerDataRequest* request) {
             }
             break;
     }
+    log("AP_BulkSetServerData want_reply");
     req_t["want_reply"] = request->want_reply;
 
+    log("AP_BulkSetServerData energy_link");
     if (request->key.rfind("EnergyLink", 0) == 0)
         req_t["slot"] = ap_player_id;
 
+    log("AP_BulkSetServerData mapping type");
     map_serverdata_typemanage[request->key] = request->type;
 
+    log("AP_BulkSetServerData insert to queue");
     queue_server_data.push({req_t,&request->status});
 }
 
 void AP_CommitServerData() {
+    log("AP_CommitServerData");
+
     Json::Value req = Json::arrayValue;
     while (!queue_server_data.empty()) {
         std::pair<Json::Value, AP_RequestStatus*> request = queue_server_data.front();
+        log("AP_CommitServerData: " + writer.write(request.first));
+
         req.append(request.first);
-        if (req[req.size()-1]["cmd"].asString() == "Set") // Set has local completion at this stage
+        std::string key = req[req.size()-1]["cmd"].asString();
+
+        log("AP_CommitServerData Key: " + key);
+
+        if (key == "Set" || key == "SetNotify") // Set has local completion at this stage
             *(request.second) = AP_RequestStatus::Done;
+
         queue_server_data.pop();
     }
     APSend(writer.write(req));
@@ -565,37 +587,51 @@ void AP_RegisterSetReplyCallback(void (*f_setreply)(AP_SetReply)) {
 }
 
 void AP_SetNotify(std::map<std::string,AP_DataType> keylist, bool requestCurrentValue) {
-    Json::Value req_t;
-    req_t[0]["cmd"] = "SetNotify";
+    log("AP_SetNotify");
 
-    if (requestCurrentValue)
-        req_t[1]["cmd"] = "Get";
+    Json::Value req_t;
+    req_t["cmd"] = "SetNotify";
+
+    int zero = 0;
+    std::string emptyJson = "{}";
 
     int i = 0;
+    std::vector<AP_SetServerDataRequest> requests;
+
     for (std::pair<std::string,AP_DataType> keytypepair : keylist) {
-        req_t[0]["keys"][i] = keytypepair.first;
+        req_t["keys"][i] = keytypepair.first;
         map_serverdata_typemanage[keytypepair.first] = keytypepair.second;
 
-        if (requestCurrentValue){
-            req_t[i + 1]["cmd"] = "Set";
-            req_t[i + 1]["key"] = keytypepair.first;
-            req_t[i + 1]["want_reply"] = true;
-            req_t[i + 1]["operations"][0]["operation"] = "default";
-            req_t[i + 1]["operations"][0]["value"] = Json::nullValue;
+        i++;
+
+        if (requestCurrentValue) {
+            AP_SetServerDataRequest setDefaultRequest;
+            setDefaultRequest.key = keytypepair.first;
+            setDefaultRequest.type = keytypepair.second;
+            setDefaultRequest.want_reply = true;
             switch (keytypepair.second) {
                 case AP_DataType::Int:
                 case AP_DataType::Double:
-                    req_t[i + 1]["default"] = 0;
+                    setDefaultRequest.operations = {{"default", &zero}};
+                    setDefaultRequest.default_value = &zero;
                     break;
                 case AP_DataType::Raw:
-                    req_t[i + 1]["default"] = Json::objectValue;
+                     setDefaultRequest.operations = {{"default", &emptyJson}};
+                    setDefaultRequest.default_value = &emptyJson;
                     break;
             }
-        }
 
-        i++;
+            requests.push_back(setDefaultRequest);
+        }
     }
-    APSend(writer.write(req_t));
+
+    AP_RequestStatus requestStatus;
+    queue_server_data.push({req_t, &requestStatus});
+
+    for (AP_SetServerDataRequest& request : requests)
+        AP_BulkSetServerData(&request);
+
+    AP_CommitServerData();
 }
 
 void AP_SetNotify(std::string key, AP_DataType type, bool requestCurrentValue) {
@@ -982,6 +1018,8 @@ bool parse_response(std::string msg, std::string &request) {
 #pragma optimize("", on)
 
 void APSend(std::string req) {
+    log("SEND: " + req);
+
     if (webSocket.getReadyState() != ix::ReadyState::Open) {
         printf("AP: Not Connected. Send will fail.\n");
         return;
