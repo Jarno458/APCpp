@@ -23,7 +23,8 @@
 
 constexpr int AP_OFFLINE_SLOT = 1404;
 constexpr int AP_OFFLINE_TEAM = 0;
-#define AP_OFFLINE_NAME "You"
+constexpr char const* AP_OFFLINE_NAME = "You";
+constexpr AP_NetworkVersion AP_DEFAULT_NETWORK_VERSION = {0,5,1}; // Default for compatibility reasons
 
 //Setup Stuff
 bool init = false;
@@ -40,8 +41,8 @@ std::string ap_ip;
 std::string ap_game;
 std::string ap_passwd;
 std::uint64_t ap_uuid = 0;
-std::mt19937_64 rando;
-AP_NetworkVersion client_version = {0,5,1}; // Default for compatibility reasons
+std::mt19937 rando;
+AP_NetworkVersion client_version = AP_DEFAULT_NETWORK_VERSION; 
 
 //Deathlink Stuff
 bool deathlinkstat = false;
@@ -260,7 +261,7 @@ void AP_Shutdown() {
     ap_game.clear();
     ap_passwd.clear();
     ap_uuid = 0;
-    client_version = {0,2,6};
+    client_version = AP_DEFAULT_NETWORK_VERSION;
     deathlinkstat = false;
     deathlinksupported = false;
     enable_deathlink = false;
