@@ -126,9 +126,7 @@ AP_RequestStatus AP_RejectGift(std::string id) {
     return AP_RejectGift(std::set<std::string>{ id });
 }
 AP_RequestStatus AP_RejectGift(std::set<std::string> ids) {
-    log("AP_RejectGift");
-
-    std::vector<AP_Gift> gifts;
+    std::set<AP_Gift*> gifts;
     std::set<std::string> giftIds;
     std::set<std::string> missingGiftIds;
     std::vector<AP_Gift> availableGiftsCopy = AP_CheckGifts();
@@ -139,7 +137,7 @@ AP_RequestStatus AP_RejectGift(std::set<std::string> ids) {
         for (AP_Gift& gift : availableGiftsCopy){
             if (!found && gift.ID == id){
                 found = true;
-                gifts.push_back(gift);
+                gifts.insert(&gift);
                 giftIds.insert(gift.ID);
             }
         }
@@ -154,9 +152,9 @@ AP_RequestStatus AP_RejectGift(std::set<std::string> ids) {
     }
 
     bool hasError = false;
-    for (AP_Gift& gift : gifts) {
-        gift.IsRefund = true;
-        if (sendGiftInternal(gift) == AP_RequestStatus::Error)
+    for (AP_Gift* gift : gifts) {
+        gift->IsRefund = true;
+        if (sendGiftInternal(*gift) == AP_RequestStatus::Error)
             hasError = true;
     }
 
