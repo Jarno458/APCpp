@@ -28,6 +28,7 @@ jobs:
       run: |
         mkdir artifact
         copy build/Release/APCpp.dll artifact
+        copy build/Release/APCpp.lib artifact
     - name: Create Build Artifact
       uses: actions/upload-artifact@v3
       with:

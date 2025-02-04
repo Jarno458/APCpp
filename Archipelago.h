@@ -12,6 +12,9 @@ bool AP_IsInit();
 
 void AP_Start();
 
+// AP_Shutdown resets the library state to before initialization, and doesn't just disconnect!
+void AP_Shutdown();
+
 struct AP_NetworkVersion {
     int major;
     int minor;
@@ -65,14 +68,15 @@ void AP_RegisterSlotDataMapIntIntCallback(std::string, void (*f_slotdata)(std::m
 void AP_RegisterSlotDataRawCallback(std::string, void (*f_slotdata)(std::string));
 
 // Send LocationScouts packet
-void AP_SendLocationScouts(std::vector<int64_t> const& locations, int create_as_hint);
+void AP_SendLocationScouts(std::set<int64_t> const& locations, int create_as_hint);
 // Receive Function for LocationInfo
 void AP_SetLocationInfoCallback(void (*f_locrecv)(std::vector<AP_NetworkItem>));
 
 /* Game Management Functions */
 
 // Sends LocationCheck for given index
-void AP_SendItem(int64_t);
+void AP_SendItem(int64_t location);
+void AP_SendItem(std::set<int64_t> const& locations);
 
 // Called when Story completed, sends StatusUpdate
 void AP_StoryComplete();
@@ -121,6 +125,8 @@ struct AP_CountdownMessage : AP_Message {
 bool AP_IsMessagePending();
 void AP_ClearLatestMessage();
 AP_Message* AP_GetLatestMessage();
+
+void AP_Say(std::string);
 
 /* Connection Information Types */
 
@@ -190,6 +196,13 @@ struct AP_SetReply {
     void* value;
 };
 
+struct AP_Bounce {
+    std::vector<std::string>* games = nullptr; // Can be nullptr or empty, but must be set to either
+    std::vector<std::string>* slots = nullptr; // Can be nullptr or empty, but must be set to either
+    std::vector<std::string>* tags  = nullptr; // Can be nullptr or empty, but must be set to either
+    std::string data; // Valid JSON Data. Can also be primitive (Numbers or literals)
+};
+
 /* Serverside Data Functions */
 
 // Set and Receive Data
@@ -220,6 +233,12 @@ void AP_RegisterSetReplyCallback(void (*f_setreply)(AP_SetReply));
 void AP_SetNotify(std::map<std::string,AP_DataType>, bool = false);
 // Single Key version of above for convenience
 void AP_SetNotify(std::string, AP_DataType, bool = false);
+
+// Send Bounce package
+void AP_SendBounce(AP_Bounce);
+
+// Receive Bounced packages. Disables automatic DeathLink management
+void AP_RegisterBouncedCallback(void (*f_bounced)(AP_Bounce));
 
 /* Gifting API Types */
 
@@ -261,9 +280,7 @@ AP_RequestStatus AP_SetGiftBoxProperties(AP_GiftBoxProperties props);
 
 // Returns information on all Gift Boxes on the server as a map of <Team,PlayerName> -> GiftBoxProperties.
 // This data is cached by the library, and attempting to send to someone who has no or a closed giftbox the last time this function was called will always fail
-// Additionally, this cache will be refreshed after the client attempts to send a gift (whether refund or new) 5 minutes after the last time the Gift Box information was pulled
-// This tries to minimize the amount of erroneous gifts sent, should someone close their giftbox / change their DesiredTraits.
-// Thus, should sending a gift fail, it might be that your Gift Box info is outdated. Refresh using this function.
+// This data is automaticly kept in sync with the AP server
 std::map<std::pair<int,std::string>,AP_GiftBoxProperties> AP_QueryGiftBoxes();
 
 // Get currently available Gifts in own gift box
