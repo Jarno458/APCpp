@@ -41,7 +41,7 @@ std::string ap_ip;
 std::string ap_game;
 std::string ap_passwd;
 std::uint64_t ap_uuid = 0;
-std::mt19937 rando;
+std::mt19937_64 rando;
 AP_NetworkVersion client_version = AP_DEFAULT_NETWORK_VERSION; 
 
 //Deathlink Stuff
@@ -1024,7 +1024,7 @@ bool parse_response(std::string msg, std::string &request) {
                 // Add targets to bounce package
                 #define ADD_TARGETS( targets ) \
                         if (root[i].isMember(#targets)) { \
-                            for (int j = 0; j < root[i][#targets].size(); j++) { \
+                            for (unsigned int j = 0; j < root[i][#targets].size(); j++) { \
                                 targets.push_back(root[i][#targets][j].asString()); \
                             } \
                             bounce.targets = &targets; \
