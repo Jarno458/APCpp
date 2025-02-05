@@ -18,6 +18,7 @@ extern int ap_player_team;
 extern int ap_player_id;
 extern std::set<int> teams_set;
 extern bool gifting_supported;
+extern bool gifting_autoReject;
 
 extern void log(std::string message);
 
@@ -26,8 +27,6 @@ std::map<std::pair<int,std::string>,AP_GiftBoxProperties> map_players_to_giftbox
 std::mutex map_players_to_giftbox_mutex;
 std::vector<AP_Gift> cur_gifts_available;
 std::mutex cur_gifts_available_mutex;
-
-bool autoReject = true;
 
 // PRIV Func Declarations Start
 AP_RequestStatus sendGiftInternal(AP_Gift gift);
@@ -193,7 +192,11 @@ AP_RequestStatus AP_RejectGift(std::set<std::string> ids) {
 }
 
 void AP_UseGiftAutoReject(bool enable) {
-    autoReject = enable;
+    gifting_autoReject = enable;
+}
+
+void AP_SetGiftingSupported(bool enabled){
+    gifting_supported = enabled;
 }
 
 // PRIV
@@ -250,7 +253,7 @@ void handleGiftAPISetReply(AP_SetReply reply) {
             cur_gifts_available.push_back(gift);
         }
         // Perform auto-reject if giftbox closed, or traits do not match
-        if (autoReject) {
+        if (gifting_autoReject) {
             std::vector<AP_Gift> availableGiftsCopy = AP_CheckGifts();
             AP_GiftBoxProperties local_box_props = getLocalGiftBoxProperties();
             std::set<std::string> giftIdsToReject;
