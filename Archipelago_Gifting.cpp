@@ -29,7 +29,8 @@ std::vector<AP_Gift> cur_gifts_available;
 std::mutex cur_gifts_available_mutex;
 
 // PRIV Func Declarations Start
-AP_RequestStatus sendGiftInternal(AP_Gift gift);
+AP_RequestStatus sendGiftInternal(const AP_Gift& gift);
+AP_RequestStatus rejectGiftsInternal(std::vector<AP_Gift>& giftsToReject);
 AP_NetworkPlayer getPlayer(int team, int slot);
 AP_NetworkPlayer getPlayer(int team, std::string name);
 AP_GiftBoxProperties getLocalGiftBoxProperties();
@@ -39,7 +40,7 @@ bool hasOpenGiftBox(int team, std::string player);
 #define AP_PLAYER_GIFTBOX_KEY ("GiftBox;" + std::to_string(ap_player_team) + ";" + std::to_string(AP_GetPlayerID()))
 #define CURRENT_GIFT_PROTOCOL_VERSION 3
 
-AP_RequestStatus AP_SetGiftBoxProperties(AP_GiftBoxProperties props) {
+AP_RequestStatus AP_SetGiftBoxProperties(const AP_GiftBoxProperties& props) {
     if (!gifting_supported){
         printf("AP: Gifting isn't enabled yet, please call AP_SetGiftingSupported(true) first");
         return AP_RequestStatus::Error;
@@ -50,7 +51,8 @@ AP_RequestStatus AP_SetGiftBoxProperties(AP_GiftBoxProperties props) {
     req_local_box.key = AP_PLAYER_GIFTBOX_KEY;
     std::string LocalGiftBoxDef_s = writer.write(Json::objectValue);
     req_local_box.default_value = &LocalGiftBoxDef_s;
-    req_local_box.operations = {{"default", &LocalGiftBoxDef_s}};
+    int zero = 0;
+    req_local_box.operations = {{"default", &zero}};
     req_local_box.type = AP_DataType::Raw;
     req_local_box.want_reply = true;
     AP_BulkSetServerData(&req_local_box);
@@ -72,9 +74,7 @@ AP_RequestStatus AP_SetGiftBoxProperties(AP_GiftBoxProperties props) {
     Json::Value DefBoxGlobal;
     DefBoxGlobal[std::to_string(AP_GetPlayerID())] = Json::objectValue;
     std::string DefBoxGlobal_s = writer.write(DefBoxGlobal);
-    req_global_box.operations = {
-        {"default", &DefBoxGlobal_s},
-        {"update", &GlobalGiftBox_s}};
+    req_global_box.operations = {{"update", &GlobalGiftBox_s}};
     req_global_box.default_value = &DefBoxGlobal_s;
     req_global_box.type = AP_DataType::Raw;
     req_global_box.want_reply = false;
@@ -156,8 +156,7 @@ AP_RequestStatus AP_RejectGift(std::set<std::string> ids) {
         return AP_RequestStatus::Error;
     }
 
-    std::set<AP_Gift*> gifts;
-    std::set<std::string> giftIds;
+    std::vector<AP_Gift> gifts;
     std::vector<AP_Gift> availableGiftsCopy = AP_CheckGifts();
 
     for (std::string id : ids) {
@@ -166,8 +165,7 @@ AP_RequestStatus AP_RejectGift(std::set<std::string> ids) {
         for (AP_Gift& gift : availableGiftsCopy){
             if (gift.ID == id){
                 found = true;
-                gifts.insert(&gift);
-                giftIds.insert(gift.ID);
+                gifts.push_back(gift);
                 break;
             }
         }
@@ -176,15 +174,25 @@ AP_RequestStatus AP_RejectGift(std::set<std::string> ids) {
             return AP_RequestStatus::Error;
     }
 
+    return rejectGiftsInternal(gifts);
+}
+
+AP_RequestStatus rejectGiftsInternal(std::vector<AP_Gift>& giftsToReject){
+    std::set<std::string> giftIds;
+
+    for (const AP_Gift& gift : giftsToReject){
+        giftIds.insert(gift.ID);
+    }
+
     AP_RequestStatus status = AP_AcceptGift(giftIds);
     if (status == AP_RequestStatus::Error) {
         return AP_RequestStatus::Error;
     }
 
     bool hasError = false;
-    for (AP_Gift* gift : gifts) {
-        gift->IsRefund = true;
-        if (sendGiftInternal(*gift) == AP_RequestStatus::Error)
+    for (AP_Gift& gift : giftsToReject) {
+        gift.IsRefund = true;
+        if (sendGiftInternal(gift) == AP_RequestStatus::Error)
             hasError = true;
     }
 
@@ -222,64 +230,92 @@ bool hasOpenGiftBox(int team, std::string player){
         && map_players_to_giftbox[giftTarget].IsOpen == true;
 }
 
-void handleGiftAPISetReply(AP_SetReply reply) {
+void handleGiftAPISetReply(const AP_SetReply& reply) {
     log("handleGiftAPISetReply");
 
     if (reply.key == AP_PLAYER_GIFTBOX_KEY) {
-        std::scoped_lock lock(cur_gifts_available_mutex);
-        cur_gifts_available.clear();
         Json::Value local_giftbox;
         reader.parse(*(std::string*)reply.value, local_giftbox);
+        std::map<std::string,AP_Gift> gifts;
+        std::set<std::string> invalid_gifts;
         for (std::string gift_id : local_giftbox.getMemberNames()) {
             AP_Gift gift;
             gift.ID = gift_id;
+
+            if (!local_giftbox[gift_id].isObject()) {
+                invalid_gifts.insert(gift_id);
+                continue;
+            }
+            int sender_team = local_giftbox[gift_id].get("sender_team", -1).asInt();
+            int sender_slot = local_giftbox[gift_id].get("sender_slot", -1).asInt();
+            int receiver_team = local_giftbox[gift_id].get("receiver_team", -1).asInt();
+            int receiver_slot = local_giftbox[gift_id].get("receiver_slot", -1).asInt();
+            if (sender_team == -1 || sender_slot == -1 || receiver_team == -1 || receiver_slot == -1) {
+                invalid_gifts.insert(gift_id);
+                continue;
+            }
             gift.ItemName = local_giftbox[gift_id].get("item_name", "Unknown").asString();
-            gift.Amount = local_giftbox[gift_id].get("amount", 0).asUInt();
-            gift.ItemValue = local_giftbox[gift_id].get("item_value", 0).asUInt();
+            gift.Amount = local_giftbox[gift_id].get("amount", 1).asUInt();
+            gift.ItemValue = local_giftbox[gift_id].get("item_value", 0).asUInt64(); //technically this value is unbounded so even uint64 isnt enough
+            gift.Sender = getPlayer(sender_team, sender_slot).name;
+            gift.Receiver = getPlayer(receiver_team, receiver_slot).name;
+            gift.SenderTeam = sender_team;
+            gift.ReceiverTeam = receiver_team;
+            gift.IsRefund = local_giftbox[gift_id].get("is_refund", false).asBool();
+
             for (Json::Value trait_v : local_giftbox[gift_id]["traits"]) {
+                if (!trait_v.isObject()) {
+                    invalid_gifts.insert(gift_id);
+                    break;
+                }
                 AP_GiftTrait trait;
                 trait.Trait = trait_v.get("trait", "Unknown").asString();
                 trait.Quality = trait_v.get("quality", 1.).asDouble();
                 trait.Duration = trait_v.get("duration", 1.).asDouble();
                 gift.Traits.push_back(trait);
             }
-            AP_NetworkPlayer SenderPlayer = getPlayer(local_giftbox[gift_id].get("sender_team", 0).asInt(), local_giftbox[gift_id].get("sender_slot", -1).asInt());
-            AP_NetworkPlayer ReceiverPlayer = getPlayer(local_giftbox[gift_id].get("receiver_team", 0).asInt(), local_giftbox[gift_id].get("receiver_slot", -1).asInt());
-            gift.Sender = SenderPlayer.name;
-            gift.Receiver = ReceiverPlayer.name;
-            gift.SenderTeam = SenderPlayer.team;
-            gift.ReceiverTeam = ReceiverPlayer.team;
-            gift.IsRefund = local_giftbox[gift_id].get("is_refund", false).asBool();
-            cur_gifts_available.push_back(gift);
+
+            if (!invalid_gifts.count(gift_id))
+                gifts[gift_id] = gift;
         }
+        if (!invalid_gifts.empty())
+            AP_AcceptGift(invalid_gifts);
+
         // Perform auto-reject if giftbox closed, or traits do not match
         if (gifting_autoReject) {
-            std::vector<AP_Gift> availableGiftsCopy = AP_CheckGifts();
             AP_GiftBoxProperties local_box_props = getLocalGiftBoxProperties();
-            std::set<std::string> giftIdsToReject;
-            for (AP_Gift& gift : availableGiftsCopy) {
-                if (!local_box_props.IsOpen) {
-                    giftIdsToReject.insert(gift.ID);
-                    continue;
-                }
-                if (!local_box_props.AcceptsAnyGift) {
+            std::vector<AP_Gift> giftsToReject;
+            if (!local_box_props.IsOpen) {
+                for (const std::pair<std::string, AP_Gift>& gift : gifts)
+                    giftsToReject.push_back(gift.second);
+            } else if (!local_box_props.AcceptsAnyGift) {
+                std::set<std::string> desired_traits(local_box_props.DesiredTraits.begin(), local_box_props.DesiredTraits.end());
+                for (const std::pair<std::string, AP_Gift>& gift : gifts) {
                     bool found = false;
-                    for (const AP_GiftTrait& trait_have : gift.Traits) {
-                        for (std::string trait_want : local_box_props.DesiredTraits) {
-                            if (trait_have.Trait == trait_want) {
-                                found = true;
-                                break;
-                            }
+                    for (const AP_GiftTrait& item_trait : gift.second.Traits) {
+                        if (desired_traits.count(item_trait.Trait)) {
+                            found = true;
+                            break;
                         }
-                        if (found) break;
                     }
-                    if (!found) {
-                        giftIdsToReject.insert(gift.ID);
-                    }
+                    if (!found)
+                        giftsToReject.push_back(gift.second);
                 }
-
-                AP_RejectGift(giftIdsToReject);
             }
+
+            if (!giftsToReject.empty()){
+                rejectGiftsInternal(giftsToReject);
+
+                for (const AP_Gift gift : giftsToReject) {
+                    gifts.erase(gift.ID);
+                }
+            }
+        }
+
+        std::scoped_lock lock(cur_gifts_available_mutex);
+        cur_gifts_available.clear();
+        for (const std::pair<std::string, AP_Gift>& gift : gifts) {
+            cur_gifts_available.push_back(gift.second);
         }
     } else if (reply.key.rfind("GiftBoxes;", 0) == 0) {
         int team = std::stoi(reply.key.substr(10)); //10 = length of "GiftBoxes;"
@@ -314,7 +350,7 @@ void handleGiftAPISetReply(AP_SetReply reply) {
     }
 }
 
-AP_RequestStatus sendGiftInternal(AP_Gift gift) {
+AP_RequestStatus sendGiftInternal(const AP_Gift& gift) {
     if (gift.IsRefund && gift.Sender == getPlayer(ap_player_team, AP_GetPlayerID()).name) {
         // Loop detected! Rejecting a gift to yourself means you dont want what is in here. Should be safe to return success immediately
         return AP_RequestStatus::Done;
@@ -339,12 +375,13 @@ AP_RequestStatus sendGiftInternal(AP_Gift gift) {
     }
     giftVal["item_name"] = gift.ItemName;
     giftVal["amount"] = gift.Amount;
-    giftVal["item_value"] = gift.ItemValue;
+    if (gift.ItemValue > 0) giftVal["item_value"] = gift.ItemValue;
+    giftVal["traits"] = Json::arrayValue;
     for (const AP_GiftTrait& trait : gift.Traits) {
         Json::Value trait_v;
         trait_v["trait"] = trait.Trait;
-        trait_v["quality"] = trait.Quality;
-        trait_v["duration"] = trait.Duration;
+        if (trait.Quality != 1.) trait_v["quality"] = trait.Quality;
+        if (trait.Duration != 1.) trait_v["duration"] = trait.Duration;
         giftVal["traits"].append(trait_v);
     }
     giftVal["sender_slot"] = SenderPlayer.slot;
@@ -365,7 +402,6 @@ AP_RequestStatus sendGiftInternal(AP_Gift gift) {
     req.default_value = &defVal_s;
 
     req.operations = {
-        {"default", &defVal_s},
         {"update", &gift_s}
     };
 

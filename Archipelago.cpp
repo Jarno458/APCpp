@@ -82,7 +82,7 @@ size_t last_item_idx = 0;
 // Gifting interop
 bool gifting_supported = false;
 bool gifting_autoReject = true;
-void handleGiftAPISetReply(AP_SetReply reply);
+void handleGiftAPISetReply(const AP_SetReply& reply);
 
 // Singleplayer Seed Info
 std::string sp_save_path;
@@ -635,7 +635,7 @@ void AP_SetNotify(std::map<std::string,AP_DataType> keylist, bool requestCurrent
                     setDefaultRequest.default_value = &zero;
                     break;
                 case AP_DataType::Raw:
-                    setDefaultRequest.operations = {{"default", &emptyJson}};
+                    setDefaultRequest.operations = {{"default", &zero}};
                     setDefaultRequest.default_value = &emptyJson;
                     break;
             }
