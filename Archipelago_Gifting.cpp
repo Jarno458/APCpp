@@ -112,7 +112,6 @@ AP_RequestStatus AP_SendGift(AP_Gift gift) {
     if (hasOpenGiftBox(gift.ReceiverTeam, gift.Receiver)) {
         gift.SenderTeam = ap_player_team;
         gift.Sender = getPlayer(ap_player_team, AP_GetPlayerID()).name;
-
         return sendGiftInternal(gift);
     }
 
