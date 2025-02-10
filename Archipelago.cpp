@@ -520,8 +520,6 @@ int AP_GetPlayerID() {
 }
 
 void AP_BulkSetServerData(AP_SetServerDataRequest* request) {
-    log("AP_BulkSetServerData " + request->key);
-
     request->status = AP_RequestStatus::Pending;
 
     Json::Value req_t;
@@ -529,31 +527,24 @@ void AP_BulkSetServerData(AP_SetServerDataRequest* request) {
     req_t["key"] = request->key;
     switch (request->type) {
         case AP_DataType::Int:
-            log("AP_BulkSetServerData int");
             for (int i = 0; i < request->operations.size(); i++) {
                 req_t["operations"][i]["operation"] = request->operations[i].operation;
                 req_t["operations"][i]["value"] = *((int*)request->operations[i].value);
             }
             break;
         case AP_DataType::Double:
-            log("AP_BulkSetServerData double");
             for (int i = 0; i < request->operations.size(); i++) {
                 req_t["operations"][i]["operation"] = request->operations[i].operation;
                 req_t["operations"][i]["value"] = *((double*)request->operations[i].value);
             }
             break;
         default:
-            log("AP_BulkSetServerData raw");
             for (int i = 0; i < request->operations.size(); i++) {
-                log("AP_BulkSetServerData operations[" + std::to_string(i) + "]");
-                log("AP_BulkSetServerData getting opperation");
                 req_t["operations"][i]["operation"] = request->operations[i].operation;
                 Json::Value data;
-                log("AP_BulkSetServerData getting value");
                 reader.parse((*(std::string*)request->operations[i].value), data);
                 req_t["operations"][i]["value"] = data;
             }
-            log("AP_BulkSetServerData default");
             Json::Value default_val_json;
             if (request->default_value != nullptr) {
                 reader.parse(*((std::string*)request->default_value), default_val_json);
@@ -561,28 +552,20 @@ void AP_BulkSetServerData(AP_SetServerDataRequest* request) {
             }
             break;
     }
-    log("AP_BulkSetServerData want_reply");
     req_t["want_reply"] = request->want_reply;
 
-    log("AP_BulkSetServerData energy_link");
     if (request->key.rfind("EnergyLink", 0) == 0)
         req_t["slot"] = ap_player_id;
 
-    log("AP_BulkSetServerData mapping type");
     map_serverdata_typemanage[request->key] = request->type;
 
-    log("AP_BulkSetServerData insert to queue");
     queue_server_data.push({req_t,&request->status});
 }
 
 void AP_CommitServerData() {
-    log("AP_CommitServerData");
-
     Json::Value req = Json::arrayValue;
     while (!queue_server_data.empty()) {
         std::pair<Json::Value, AP_RequestStatus*> request = queue_server_data.front();
-        log("AP_CommitServerData: " + writer.write(request.first));
-
         req.append(request.first);
         std::string key = req[req.size()-1]["cmd"].asString();
         if (key == "Set" || key == "SetNotify") // Set has local completion at this stage
@@ -714,7 +697,7 @@ void AP_Init_Generic() {
 
 #pragma optimize("", off)
 bool parse_response(std::string msg, std::string &request) {
-    log("PACKET: \""+ msg +"\"");
+    log("RECEIVED: \""+ msg +"\"");
     Json::Value root;
     reader.parse(msg, root);
     for (unsigned int i = 0; i < root.size(); i++) {
