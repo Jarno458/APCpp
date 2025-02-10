@@ -585,9 +585,6 @@ void AP_CommitServerData() {
 
         req.append(request.first);
         std::string key = req[req.size()-1]["cmd"].asString();
-
-        log("AP_CommitServerData Key: " + key);
-
         if (key == "Set" || key == "SetNotify") // Set has local completion at this stage
             *(request.second) = AP_RequestStatus::Done;
 
@@ -606,8 +603,6 @@ void AP_RegisterSetReplyCallback(void (*f_setreply)(AP_SetReply)) {
 }
 
 void AP_SetNotify(std::map<std::string,AP_DataType> keylist, bool requestCurrentValue) {
-    log("AP_SetNotify");
-
     Json::Value req_t;
     req_t["cmd"] = "SetNotify";
 
@@ -791,11 +786,11 @@ bool parse_response(std::string msg, std::string &request) {
                 teams_set.insert(root[i]["players"][j]["team"].asInt());
             }
 
-            if (gifting_supported){
+            if (gifting_supported) {
+                // Order is important, Motherboxes must be retrieved before personal box for auto-rejection reasons, do not combine
                 std::map<std::string,AP_DataType> giftMotherBoxKeys;
                 for (int team : teams_set)
                     giftMotherBoxKeys.emplace("GiftBoxes;" + std::to_string(team), AP_DataType::Raw); 
-                //order is important, Motherboxes must be retrieved before personal box for auto-rejection reasons, do not combine
                 AP_SetNotify(giftMotherBoxKeys, true);
                 AP_SetNotify("GiftBox;" + std::to_string(ap_player_team) + ";" + std::to_string(ap_player_id), AP_DataType::Raw, true);
             }
@@ -820,7 +815,6 @@ bool parse_response(std::string msg, std::string &request) {
                 }
             }
 
-            AP_GetServerDataRequest resync_serverdata_request;
             resync_serverdata_request.key = "APCppLastRecv" + ap_player_name + std::to_string(ap_player_id);
             resync_serverdata_request.value = &last_item_idx;
             resync_serverdata_request.type = AP_DataType::Int;

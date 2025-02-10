@@ -15,12 +15,9 @@ extern Json::FastWriter writer;
 extern Json::Reader reader;
 extern std::mt19937_64 rando;
 extern int ap_player_team;
-extern int ap_player_id;
 extern std::set<int> teams_set;
 extern bool gifting_supported;
 extern bool gifting_autoReject;
-
-extern void log(std::string message);
 
 // Stuff that is only used for Gifting
 std::map<std::pair<int,std::string>,AP_GiftBoxProperties> map_players_to_giftbox;
@@ -55,7 +52,6 @@ AP_RequestStatus AP_SetGiftBoxProperties(AP_GiftBoxProperties props) {
     req_local_box.operations = {{"default", &zero}};
     req_local_box.type = AP_DataType::Raw;
     req_local_box.want_reply = true;
-
     AP_BulkSetServerData(&req_local_box);
 
     // Set Properties
@@ -95,9 +91,6 @@ std::map<std::pair<int,std::string>,AP_GiftBoxProperties> AP_QueryGiftBoxes() {
 // Get currently available Gifts in own gift box
 std::vector<AP_Gift> AP_CheckGifts() {
     std::scoped_lock lock(cur_gifts_available_mutex);
-
-    log("AP_CheckGifts: returning " + std::to_string(cur_gifts_available.size()) + " gifts");
-
     return cur_gifts_available;
 }
 
@@ -108,6 +101,8 @@ AP_RequestStatus AP_SendGift(AP_Gift gift) {
     }
 
     if (gift.IsRefund) return AP_RequestStatus::Error;
+
+    std::pair<int,std::string> giftReceiver = {gift.ReceiverTeam, gift.Receiver};
 
     if (hasOpenGiftBox(gift.ReceiverTeam, gift.Receiver)) {
         gift.SenderTeam = ap_player_team;
@@ -242,7 +237,6 @@ void handleGiftAPISetReply(const AP_SetReply& reply) {
 
             if (!local_giftbox[gift_id].isObject()) {
                 invalid_gifts.insert(gift_id);
-                log("handleGiftAPISetReply: Destroying gift " + gift_id + " as its not an object");
                 continue;
             }
             int sender_team = local_giftbox[gift_id].get("sender_team", -1).asInt();
@@ -251,7 +245,6 @@ void handleGiftAPISetReply(const AP_SetReply& reply) {
             int receiver_slot = local_giftbox[gift_id].get("receiver_slot", -1).asInt();
             if (sender_team == -1 || sender_slot == -1 || receiver_team == -1 || receiver_slot == -1) {
                 invalid_gifts.insert(gift_id);
-                log("handleGiftAPISetReply: Destroying gift " + gift_id + " as sender/receiver/slot/team is not properly set");
                 continue;
             }
             gift.ItemName = local_giftbox[gift_id].get("item_name", "Unknown").asString();
@@ -265,7 +258,6 @@ void handleGiftAPISetReply(const AP_SetReply& reply) {
 
             for (Json::Value trait_v : local_giftbox[gift_id]["traits"]) {
                 if (!trait_v.isObject()) {
-                    log("handleGiftAPISetReply: Destroying gift " + gift_id + " as its trait isnt an object");
                     invalid_gifts.insert(gift_id);
                     break;
                 }
@@ -287,10 +279,8 @@ void handleGiftAPISetReply(const AP_SetReply& reply) {
             AP_GiftBoxProperties local_box_props = getLocalGiftBoxProperties();
             std::vector<AP_Gift> giftsToReject;
             if (!local_box_props.IsOpen) {
-                for (const std::pair<std::string, AP_Gift>& gift : gifts) {
-                    log("handleGiftAPISetReply: Rejecting gift " + gift.first + " because local giftbox is closed");
+                for (const std::pair<std::string, AP_Gift>& gift : gifts)
                     giftsToReject.push_back(gift.second);
-                }
             } else if (!local_box_props.AcceptsAnyGift) {
                 std::set<std::string> desired_traits(local_box_props.DesiredTraits.begin(), local_box_props.DesiredTraits.end());
                 for (const std::pair<std::string, AP_Gift>& gift : gifts) {
@@ -301,10 +291,8 @@ void handleGiftAPISetReply(const AP_SetReply& reply) {
                             break;
                         }
                     }
-                    if (!found){
-                        log("handleGiftAPISetReply: Rejecting gift " + gift.first + " as it has no matching traits, desired count: " + std::to_string(desired_traits.size()) + ", item traits count: " + std::to_string(gift.second.Traits.size()));
+                    if (!found)
                         giftsToReject.push_back(gift.second);
-                    }
                 }
             }
 
@@ -312,7 +300,6 @@ void handleGiftAPISetReply(const AP_SetReply& reply) {
                 rejectGiftsInternal(giftsToReject);
 
                 for (const AP_Gift gift : giftsToReject) {
-                    log("handleGiftAPISetReply: removing rejected gift: " + gift.ID);
                     gifts.erase(gift.ID);
                 }
             }
@@ -320,9 +307,6 @@ void handleGiftAPISetReply(const AP_SetReply& reply) {
 
         std::scoped_lock lock(cur_gifts_available_mutex);
         cur_gifts_available.clear();
-
-        log("handleGiftAPISetReply: updating available gifts with: " + std::to_string(gifts.size()) + " gifts");
-
         for (const std::pair<std::string, AP_Gift>& gift : gifts) {
             cur_gifts_available.push_back(gift.second);
         }
