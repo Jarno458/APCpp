@@ -53,14 +53,14 @@ void AP_SetDeathLinkSupported(bool);
 //Parameter Function must reset local state
 void AP_SetItemClearCallback(void (*f_itemclr)());
 //Parameter Function must collect item id given with parameter. Secound parameter indicates whether or not to notify player
-void AP_SetItemRecvCallback(void (*f_itemrecv)(int64_t,bool));
+void AP_SetItemRecvCallback(void (*f_itemrecv)(int64_t,bool,bool));
 //Parameter Function must mark given location id as checked
 void AP_SetLocationCheckedCallback(void (*f_locrecv)(int64_t));
 
 /* Optional Callback Functions */
 
 //Parameter Function will be called when Death Link is received. Alternative to Pending/Clear usage
-void AP_SetDeathLinkRecvCallback(void (*f_deathrecv)());
+void AP_SetDeathLinkRecvCallback(void (*f_deathrecv)(std::string,std::string));
 
 // Parameter Function receives Slotdata of respective type
 void AP_RegisterSlotDataIntCallback(std::string, void (*f_slotdata)(int));
@@ -156,7 +156,7 @@ struct AP_RoomInfo {
 
 int AP_GetRoomInfo(AP_RoomInfo*);
 AP_ConnectionStatus AP_GetConnectionStatus();
-int AP_GetUUID();
+std::uint64_t AP_GetUUID();
 int AP_GetPlayerID();
 
 /* Serverside Data Types */

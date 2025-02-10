@@ -63,12 +63,14 @@ std::map<std::pair<std::string,int64_t>, std::string> map_item_id_name;
 // Data Sets
 std::set<int> teams_set;
 
+extern void log(std::string message);
+
 // Callback function pointers
 void (*resetItemValues)();
-void (*getitemfunc)(int64_t,bool);
+void (*getitemfunc)(int64_t,bool,bool);
 void (*checklocfunc)(int64_t);
 void (*locinfofunc)(std::vector<AP_NetworkItem>) = nullptr;
-void (*recvdeath)() = nullptr;
+void (*recvdeath)(std::string, std::string) = nullptr;
 void (*setreplyfunc)(AP_SetReply) = nullptr;
 void (*bouncedfunc)(AP_Bounce) = nullptr;
 
@@ -113,6 +115,7 @@ Json::Value sp_ap_root;
 // PRIV Func Declarations Start
 void AP_Init_Generic();
 bool parse_response(std::string msg, std::string &request);
+void Parse_LocationInfo(Json::Value &root, unsigned int i);
 void APSend(std::string req);
 void WriteFileJSON(Json::Value val, std::string path);
 std::string getItemName(std::string game, int64_t id);
@@ -422,7 +425,7 @@ void AP_SetItemClearCallback(void (*f_itemclr)()) {
     resetItemValues = f_itemclr;
 }
 
-void AP_SetItemRecvCallback(void (*f_itemrecv)(int64_t,bool)) {
+void AP_SetItemRecvCallback(void (*f_itemrecv)(int64_t,bool,bool)) {
     getitemfunc = f_itemrecv;
 }
 
@@ -434,7 +437,7 @@ void AP_SetLocationInfoCallback(void (*f_locinfrecv)(std::vector<AP_NetworkItem>
     locinfofunc = f_locinfrecv;
 }
 
-void AP_SetDeathLinkRecvCallback(void (*f_deathrecv)()) {
+void AP_SetDeathLinkRecvCallback(void (*f_deathrecv)(std::string,std::string)) {
     recvdeath = f_deathrecv;
 }
 
@@ -508,7 +511,7 @@ AP_ConnectionStatus AP_GetConnectionStatus() {
     return AP_ConnectionStatus::Disconnected;
 }
 
-int AP_GetUUID() {
+std::uint64_t AP_GetUUID() {
     return ap_uuid;
 }
 
@@ -687,7 +690,9 @@ void AP_Init_Generic() {
     datapkg_cache_file.close();
 }
 
+//#pragma optimize("", off)
 bool parse_response(std::string msg, std::string &request) {
+    log("RECEIVED: \""+ msg +"\"");
     Json::Value root;
     reader.parse(msg, root);
     for (unsigned int i = 0; i < root.size(); i++) {
@@ -967,7 +972,8 @@ bool parse_response(std::string msg, std::string &request) {
             for (unsigned int j = 0; j < root[i]["items"].size(); j++) {
                 int64_t item_id = root[i]["items"][j]["item"].asInt64();
                 notify = (item_idx == 0 && last_item_idx <= j && multiworld) || item_idx != 0;
-                (*getitemfunc)(item_id, notify);
+                bool isFromServer = root[i]["items"][j]["location"].asInt64() < 0;
+                (*getitemfunc)(item_id, notify, isFromServer);
                 if (queueitemrecvmsg && notify) {
                     AP_ItemRecvMessage* msg = new AP_ItemRecvMessage;
                     AP_NetworkPlayer sender = getPlayer(0, root[i]["items"][j]["player"].asInt());
@@ -1015,8 +1021,10 @@ bool parse_response(std::string msg, std::string &request) {
                         // Suspicions confirmed ;-; But maybe we died, not them?
                         if (root[i]["data"]["source"].asString() == ap_player_name) break; // We already paid our penance
                         deathlinkstat = true;
+                        std::string source = root[i]["data"]["source"].asString();
+                        std::string cause = root[i]["data"]["cause"].isNull() ? "" : root[i]["data"]["cause"].asString();
                         if (recvdeath != nullptr) {
-                            (*recvdeath)();
+                            (*recvdeath)(source, cause);
                         }
                         break;
                     }
@@ -1047,8 +1055,11 @@ bool parse_response(std::string msg, std::string &request) {
     }
     return false;
 }
+//#pragma optimize("", on)
 
 void APSend(std::string req) {
+    log("SEND: " + req);
+
     if (webSocket.getReadyState() != ix::ReadyState::Open) {
         printf("AP: Not Connected. Send will fail.\n");
         return;
