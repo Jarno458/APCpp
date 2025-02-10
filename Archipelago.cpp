@@ -553,10 +553,6 @@ void AP_BulkSetServerData(AP_SetServerDataRequest* request) {
             break;
     }
     req_t["want_reply"] = request->want_reply;
-
-    if (request->key.rfind("EnergyLink", 0) == 0)
-        req_t["slot"] = ap_player_id;
-
     map_serverdata_typemanage[request->key] = request->type;
 
     queue_server_data.push({req_t,&request->status});
@@ -570,7 +566,6 @@ void AP_CommitServerData() {
         std::string key = req[req.size()-1]["cmd"].asString();
         if (key == "Set" || key == "SetNotify") // Set has local completion at this stage
             *(request.second) = AP_RequestStatus::Done;
-
         queue_server_data.pop();
     }
     APSend(writer.write(req));
@@ -695,7 +690,7 @@ void AP_Init_Generic() {
     datapkg_cache_file.close();
 }
 
-#pragma optimize("", off)
+//#pragma optimize("", off)
 bool parse_response(std::string msg, std::string &request) {
     log("RECEIVED: \""+ msg +"\"");
     Json::Value root;
@@ -1060,7 +1055,7 @@ bool parse_response(std::string msg, std::string &request) {
     }
     return false;
 }
-#pragma optimize("", on)
+//#pragma optimize("", on)
 
 void APSend(std::string req) {
     log("SEND: " + req);
