@@ -511,7 +511,7 @@ AP_ConnectionStatus AP_GetConnectionStatus() {
     return AP_ConnectionStatus::Disconnected;
 }
 
-int AP_GetUUID() {
+std::uint64_t AP_GetUUID() {
     return ap_uuid;
 }
 
