@@ -21,7 +21,7 @@
 #include <utility>
 #include <vector>
 
-constexpr int AP_OFFLINE_SLOT = 1404;
+extern const int AP_OFFLINE_SLOT = 1404;
 constexpr int AP_OFFLINE_TEAM = 0;
 constexpr char const* AP_OFFLINE_NAME = "You";
 constexpr AP_NetworkVersion AP_DEFAULT_NETWORK_VERSION = {0,5,1}; // Default for compatibility reasons
@@ -82,6 +82,8 @@ std::function<void(AP_Bounce)> bouncedfunc = nullptr;
 std::map<std::string,AP_DataType> map_serverdata_typemanage;
 AP_GetServerDataRequest resync_serverdata_request;
 uint64_t last_item_idx = 0;
+
+void resolveDataStorageOp(Json::Value op);
 
 // Gifting interop
 bool gifting_supported = false;
@@ -540,11 +542,17 @@ void AP_BulkSetServerData(AP_SetServerDataRequest* request) {
                 req_t["operations"][i]["operation"] = request->operations[i].operation;
                 req_t["operations"][i]["value"] = *((int*)request->operations[i].value);
             }
+            if (request->default_value != nullptr) {
+                req_t["default"] = *((int*)request->default_value);
+            }
             break;
         case AP_DataType::Double:
             for (int i = 0; i < request->operations.size(); i++) {
                 req_t["operations"][i]["operation"] = request->operations[i].operation;
                 req_t["operations"][i]["value"] = *((double*)request->operations[i].value);
+            }
+            if (request->default_value != nullptr) {
+                req_t["default"] = *((double*)request->default_value);
             }
             break;
         default:
@@ -554,8 +562,8 @@ void AP_BulkSetServerData(AP_SetServerDataRequest* request) {
                 reader.parse((*(std::string*)request->operations[i].value), data);
                 req_t["operations"][i]["value"] = data;
             }
-            Json::Value default_val_json;
             if (request->default_value != nullptr) {
+                Json::Value default_val_json;
                 reader.parse(*((std::string*)request->default_value), default_val_json);
                 req_t["default"] = default_val_json;
             }
@@ -575,9 +583,11 @@ void AP_CommitServerData() {
         std::string key = req[req.size()-1]["cmd"].asString();
         if (key == "Set" || key == "SetNotify") // Set has local completion at this stage
             *(request.second) = AP_RequestStatus::Done;
+        if (!multiworld)
+            resolveDataStorageOp(request.first);
         queue_server_data.pop();
     }
-    APSend(writer.write(req));
+    if (multiworld) APSend(writer.write(req));
 }
 
 void AP_SetServerData(AP_SetServerDataRequest* request) {
@@ -819,8 +829,9 @@ bool parse_response(std::string msg, std::string &request) {
             }
 
             // Get datapackage for outdated games
+            const Json::Value dpkg_cache_games = datapkg_cache.get("games", Json::objectValue);
             for (std::pair<std::string,std::string> game_pkg : lib_room_info.datapackage_checksums) {
-                if (datapkg_cache.get("games", Json::objectValue).get(game_pkg.first, Json::objectValue).get("checksum", "_None") != game_pkg.second) {
+                if (dpkg_cache_games.get(game_pkg.first, Json::objectValue).get("checksum", "_None") != game_pkg.second) {
                     printf("AP: Cache outdated for game: %s\n", game_pkg.first.c_str());
                     datapkg_outdated_games.insert(game_pkg.first);
                 }
@@ -1097,9 +1108,9 @@ void parseDataPkg(Json::Value new_datapkg) {
         printf("AP: Game Cache updated for %s\n", game.c_str());
     }
     WriteFileJSON(datapkg_cache, datapkg_cache_path);
-    parseDataPkg();
 
     if (datapkg_outdated_games.empty()){
+        parseDataPkg(); // Only after all datapackages are up to date
         auth = true;
         ssl_success = auth && isSSL;
         refused = false;
