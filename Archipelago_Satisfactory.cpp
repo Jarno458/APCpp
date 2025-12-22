@@ -4,14 +4,18 @@
 #include <set>
 #include <iostream>
 #include <json/value.h>
+#include <json/writer.h>
 
 //imports from apcpp
 extern int ap_player_team;
 extern int ap_player_id;
 extern std::set<int> teams_set;
 extern std::map<int, AP_NetworkPlayer> map_players;
+extern Json::FastWriter writer;
+extern bool enable_deathlink;
 
 extern std::string getItemName(std::string game, int64_t id);
+extern void APSend(std::string req);
 //
 
 std::vector<int64_t> all_locations;
@@ -96,4 +100,16 @@ std::string AP_GetSlotData() {
         //slot_data = *(std::string*)request.value;
         return slot_data;
     }
+}
+
+void AP_EnabledDeathlinkAnyway() {
+    enable_deathlink = true;
+
+    Json::Value setdeathlink;
+    setdeathlink["cmd"] = "ConnectUpdate";
+    setdeathlink["tags"][0] = "DeathLink";
+
+    std::string request = writer.write(setdeathlink);
+
+    APSend(request);
 }
