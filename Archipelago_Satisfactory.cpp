@@ -103,7 +103,7 @@ std::string AP_GetSlotData() {
 }
 
 void AP_EnabledDeathlinkAnyway() {
-    enable_deathlink = true;
+    enable_deathlink = false;
 
     Json::Value setdeathlink;
     setdeathlink["cmd"] = "ConnectUpdate";
