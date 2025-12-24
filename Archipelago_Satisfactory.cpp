@@ -109,7 +109,10 @@ void AP_EnabledDeathlinkAnyway() {
     setdeathlink["cmd"] = "ConnectUpdate";
     setdeathlink["tags"][0] = "DeathLink";
 
-    std::string request = writer.write(setdeathlink);
+    Json::Value packets;
+    packets.append(setdeathlink);
+
+    std::string request = writer.write(packets);
 
     APSend(request);
 }
